@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,69 @@ import {
 } from 'react-native';
 import MemberForm from '../components/MemberForm';
 import DatabaseService from '../services/DatabaseService';
+import AuthService from '../services/AuthService';
+import { canEditMember, canCreateMember } from '../utils/authorization';
 
 const AddEditMember = ({ route, navigation }) => {
   const { member } = route?.params || {};
   const [loading, setLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    loadCurrentUser();
+  }, []);
+
+  const loadCurrentUser = async () => {
+    try {
+      const user = await AuthService.getCurrentSession();
+      setCurrentUser(user);
+
+      // Check permissions
+      if (member?._id) {
+        // Editing existing member - check edit permission
+        if (!canEditMember(user, member._id)) {
+          Alert.alert(
+            'Permission Denied',
+            'You do not have permission to edit this member record.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      } else {
+        // Creating new member - check create permission
+        if (!canCreateMember(user)) {
+          Alert.alert(
+            'Permission Denied',
+            'You do not have permission to create new member records. Only admins can add members.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user:', error);
+      Alert.alert('Error', 'Failed to verify permissions', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+    }
+  };
 
   const handleSubmit = async (memberData) => {
     try {
       setLoading(true);
+
+      // Double-check permissions before saving
+      if (member?._id) {
+        if (!canEditMember(currentUser, member._id)) {
+          Alert.alert('Permission Denied', 'You do not have permission to edit this member.');
+          setLoading(false);
+          return;
+        }
+      } else {
+        if (!canCreateMember(currentUser)) {
+          Alert.alert('Permission Denied', 'You do not have permission to create members.');
+          setLoading(false);
+          return;
+        }
+      }
 
       // Check for duplicate email/mobile before saving
       const duplicateCheck = await DatabaseService.checkDuplicateMember(
@@ -45,8 +100,8 @@ const AddEditMember = ({ route, navigation }) => {
       }
 
       if (member?._id) {
-        // Update existing member
-        await DatabaseService.updateMember(member._id, memberData);
+        // Update existing member - pass currentUser for permission check
+        await DatabaseService.updateMember(member._id, memberData, currentUser);
         Alert.alert('Success', 'Member updated successfully', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);

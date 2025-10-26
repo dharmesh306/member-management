@@ -141,11 +141,22 @@ class DatabaseService {
   }
 
   // Update a member
-  async updateMember(id, memberData) {
+  async updateMember(id, memberData, currentUser = null) {
     try {
       // Ensure database is initialized
       if (!this.db) {
         this.initDatabase();
+      }
+
+      // Check permissions if currentUser is provided
+      if (currentUser) {
+        const isAdmin = currentUser.isAdmin || currentUser.isSuperAdmin;
+        const isOwner = currentUser._id === id;
+
+        // Only admins or the member themselves can update
+        if (!isAdmin && !isOwner) {
+          throw new Error('You do not have permission to update this member');
+        }
       }
       
       const doc = await this.db.get(id);
@@ -164,11 +175,21 @@ class DatabaseService {
   }
 
   // Delete a member
-  async deleteMember(id) {
+  async deleteMember(id, currentUser = null) {
     try {
       // Ensure database is initialized
       if (!this.db) {
         this.initDatabase();
+      }
+
+      // Check permissions if currentUser is provided
+      if (currentUser) {
+        const isAdmin = currentUser.isAdmin || currentUser.isSuperAdmin;
+
+        // Only admins can delete members
+        if (!isAdmin) {
+          throw new Error('You do not have permission to delete members. Only admins can delete records.');
+        }
       }
       
       const doc = await this.db.get(id);
@@ -245,6 +266,34 @@ class DatabaseService {
       return result.rows.map(row => row.doc);
     } catch (error) {
       console.error('Error getting all members:', error);
+      throw error;
+    }
+  }
+
+  // Get members based on user role and permissions
+  async getMembersForUser(currentUser) {
+    try {
+      // Ensure database is initialized
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const allMembers = await this.getAllMembers();
+
+      // If user is admin or super admin, return all members
+      if (currentUser && (currentUser.isAdmin || currentUser.isSuperAdmin)) {
+        return allMembers;
+      }
+
+      // If user is a regular member/spouse, return only their record
+      if (currentUser && (currentUser.loginType === 'member' || currentUser.loginType === 'spouse')) {
+        return allMembers.filter(member => member._id === currentUser._id);
+      }
+
+      // No user or invalid user, return empty array
+      return [];
+    } catch (error) {
+      console.error('Error getting members for user:', error);
       throw error;
     }
   }

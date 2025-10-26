@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import DatabaseService from '../services/DatabaseService';
 import SyncStatus from '../components/SyncStatus';
+import { canEditMember, canDeleteMember, canCreateMember, hasAdminPrivileges, getUserRoleDisplay } from '../utils/authorization';
 
 const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
   const [members, setMembers] = useState([]);
@@ -43,7 +44,8 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
   const loadMembers = async () => {
     try {
       setLoading(true);
-      const data = await DatabaseService.getAllMembers();
+      // Use the new permission-aware method
+      const data = await DatabaseService.getMembersForUser(currentUser);
       setMembers(data);
       setFilteredMembers(data);
       calculateStats(data);
@@ -104,6 +106,12 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
   };
 
   const handleDelete = async (member) => {
+    // Check if user has permission to delete
+    if (!canDeleteMember(currentUser, member._id)) {
+      Alert.alert('Permission Denied', 'You do not have permission to delete members. Only admins can delete records.');
+      return;
+    }
+
     const confirmDelete = () => {
       return new Promise((resolve) => {
         Alert.alert(
@@ -120,81 +128,98 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
     const confirmed = await confirmDelete();
     if (confirmed) {
       try {
-        await DatabaseService.deleteMember(member._id);
+        await DatabaseService.deleteMember(member._id, currentUser);
         await loadMembers();
         Alert.alert('Success', 'Member deleted successfully');
       } catch (error) {
-        Alert.alert('Error', 'Failed to delete member');
+        Alert.alert('Error', error.message || 'Failed to delete member');
         console.error(error);
       }
     }
   };
 
-  const renderMemberCard = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>
-            {item.firstName} {item.lastName}
-          </Text>
-          <Text style={styles.memberEmail}>{item.email}</Text>
-          <Text style={styles.memberMobile}>{item.mobile}</Text>
-        </View>
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.editButton]}
-            onPress={() => onEditMember(item)}
-          >
-            <Text style={styles.actionButtonText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={() => handleDelete(item)}
-          >
-            <Text style={styles.actionButtonText}>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  const renderMemberCard = ({ item }) => {
+    const canEdit = canEditMember(currentUser, item._id);
+    const canDelete = canDeleteMember(currentUser, item._id);
+    const isOwnRecord = currentUser && currentUser._id === item._id;
 
-      {/* Address */}
-      {item.address && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Address:</Text>
-          <Text style={styles.sectionText}>
-            {item.address.street}, {item.address.city}, {item.address.state} {item.address.zipCode}
-          </Text>
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.memberInfo}>
+            <View style={styles.memberNameContainer}>
+              <Text style={styles.memberName}>
+                {item.firstName} {item.lastName}
+              </Text>
+              {isOwnRecord && !hasAdminPrivileges(currentUser) && (
+                <View style={styles.ownRecordBadge}>
+                  <Text style={styles.ownRecordBadgeText}>Your Record</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.memberEmail}>{item.email}</Text>
+            <Text style={styles.memberMobile}>{item.mobile}</Text>
+          </View>
+          <View style={styles.cardActions}>
+            {canEdit && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.editButton]}
+                onPress={() => onEditMember(item)}
+              >
+                <Text style={styles.actionButtonText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+            {canDelete && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deleteButton]}
+                onPress={() => handleDelete(item)}
+              >
+                <Text style={styles.actionButtonText}>Delete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      )}
 
-      {/* Spouse Info */}
-      {item.spouse?.firstName && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Spouse:</Text>
-          <Text style={styles.sectionText}>
-            {item.spouse.firstName} {item.spouse.lastName}
-          </Text>
-          {item.spouse.email && (
-            <Text style={styles.sectionTextSmall}>{item.spouse.email}</Text>
-          )}
-        </View>
-      )}
-
-      {/* Children */}
-      {item.children && item.children.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Children ({item.children.length}):
-          </Text>
-          {item.children.map((child, index) => (
-            <Text key={child.id || index} style={styles.sectionText}>
-              • {child.firstName} {child.lastName}
-              {child.dateOfBirth && ` (${child.dateOfBirth})`}
+        {/* Address */}
+        {item.address && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Address:</Text>
+            <Text style={styles.sectionText}>
+              {item.address.street}, {item.address.city}, {item.address.state} {item.address.zipCode}
             </Text>
-          ))}
-        </View>
-      )}
-    </View>
-  );
+          </View>
+        )}
+
+        {/* Spouse Info */}
+        {item.spouse?.firstName && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Spouse:</Text>
+            <Text style={styles.sectionText}>
+              {item.spouse.firstName} {item.spouse.lastName}
+            </Text>
+            {item.spouse.email && (
+              <Text style={styles.sectionTextSmall}>{item.spouse.email}</Text>
+            )}
+          </View>
+        )}
+
+        {/* Children */}
+        {item.children && item.children.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Children ({item.children.length}):
+            </Text>
+            {item.children.map((child, index) => (
+              <Text key={child.id || index} style={styles.sectionText}>
+                • {child.firstName} {child.lastName}
+                {child.dateOfBirth && ` (${child.dateOfBirth})`}
+              </Text>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
@@ -220,6 +245,27 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
 
   return (
     <View style={styles.container}>
+      {/* User Role Header */}
+      {currentUser && (
+        <View style={styles.userRoleHeader}>
+          <View style={styles.userRoleInfo}>
+            <Text style={styles.userRoleLabel}>Logged in as:</Text>
+            <Text style={styles.userRoleName}>
+              {currentUser.firstName} {currentUser.lastName}
+            </Text>
+            <View style={[
+              styles.roleBadge,
+              hasAdminPrivileges(currentUser) ? styles.roleBadgeAdmin : styles.roleBadgeUser
+            ]}>
+              <Text style={styles.roleBadgeText}>{getUserRoleDisplay(currentUser)}</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Sync Status */}
       <SyncStatus onRefresh={handleRefresh} />
 
@@ -258,10 +304,12 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
         )}
       </View>
 
-      {/* Add Member Button */}
-      <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
-        <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
-      </TouchableOpacity>
+      {/* Add Member Button - Only for admins */}
+      {canCreateMember(currentUser) && (
+        <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
+          <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Results Count */}
       {searchQuery && (
@@ -292,6 +340,58 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  userRoleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  userRoleInfo: {
+    flex: 1,
+  },
+  userRoleLabel: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 2,
+  },
+  userRoleName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleBadgeAdmin: {
+    backgroundColor: '#e74c3c',
+  },
+  roleBadgeUser: {
+    backgroundColor: '#3498db',
+  },
+  roleBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  logoutButton: {
+    backgroundColor: '#95a5a6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -419,11 +519,29 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: Platform.OS === 'web' ? 0 : 12,
   },
+  memberNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
   memberName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginRight: 8,
+  },
+  ownRecordBadge: {
+    backgroundColor: '#27ae60',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  ownRecordBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   memberEmail: {
     fontSize: 14,
