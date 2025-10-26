@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Member Management",
+    "slug": "member-management",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#4CAF50"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.membermanagement.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#4CAF50"
+      },
+      "package": "com.membermanagement.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
