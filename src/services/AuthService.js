@@ -47,6 +47,7 @@ class AuthService {
       const hashedPassword = this.hashPassword(password);
       const member = {
         ...memberData,
+        status: 'pending', // New registrations require admin approval
         auth: {
           password: hashedPassword,
           createdAt: new Date().toISOString(),
@@ -64,6 +65,7 @@ class AuthService {
       return {
         success: true,
         member: createdMember,
+        message: 'Registration successful! Your account is pending admin approval.',
       };
     } catch (error) {
       console.error('Registration error:', error);
@@ -137,6 +139,16 @@ class AuthService {
 
       if (!member) {
         throw new Error('Invalid credentials');
+      }
+
+      // Check if account is pending approval
+      if (member.status === 'pending') {
+        throw new Error('Your account is pending admin approval. Please wait for approval before logging in.');
+      }
+
+      // Check if account was denied
+      if (member.status === 'denied') {
+        throw new Error('Your account registration was denied. Please contact support for more information.');
       }
 
       // Check if logging in as member or spouse

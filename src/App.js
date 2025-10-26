@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Dashboard from './screens/Dashboard';
 import AddEditMember from './screens/AddEditMember';
+import AdminManagement from './screens/AdminManagement';
 import Login from './screens/Login';
 import Register from './screens/Register';
 import ForgotPassword from './screens/ForgotPassword';
@@ -71,6 +72,10 @@ const App = () => {
   const handleBack = () => {
     setSelectedMember(null);
     setCurrentScreen('dashboard');
+  };
+
+  const handleAdminManagement = () => {
+    setCurrentScreen('adminManagement');
   };
 
   const renderScreen = () => {
@@ -137,7 +142,16 @@ const App = () => {
             onAddMember={handleAddMember}
             onEditMember={handleEditMember}
             onLogout={handleLogout}
+            onAdminManagement={handleAdminManagement}
             currentUser={currentUser}
+          />
+        );
+      
+      case 'adminManagement':
+        return (
+          <AdminManagement
+            currentUser={currentUser}
+            onBack={handleBack}
           />
         );
       

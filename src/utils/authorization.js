@@ -117,3 +117,30 @@ export const getUserRoleDisplay = (user) => {
 export const hasAdminPrivileges = (user) => {
   return isAdmin(user) || isSuperAdmin(user);
 };
+
+/**
+ * Check if user can manage other users (approve registrations, manage admins)
+ * Only super admins can manage users
+ */
+export const canManageUsers = (user) => {
+  if (!user) return false;
+  return user.isSuperAdmin === true;
+};
+
+/**
+ * Check if user can approve/deny new admin requests
+ * Only super admins can approve admins
+ */
+export const canApproveAdmins = (user) => {
+  if (!user) return false;
+  return user.isSuperAdmin === true;
+};
+
+/**
+ * Check if user can approve/deny member registrations
+ * Admins and super admins can approve registrations
+ */
+export const canApproveRegistrations = (user) => {
+  if (!user) return false;
+  return isAdmin(user) || isSuperAdmin(user);
+};

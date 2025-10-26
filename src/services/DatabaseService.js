@@ -383,6 +383,177 @@ class DatabaseService {
     }
   }
 
+  // Get pending registrations (members with status 'pending')
+  async getPendingRegistrations() {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const result = await this.db.find({
+        selector: {
+          type: 'member',
+          status: 'pending'
+        },
+        sort: [{ createdAt: 'desc' }]
+      });
+
+      return result.docs;
+    } catch (error) {
+      console.error('Error getting pending registrations:', error);
+      throw error;
+    }
+  }
+
+  // Get pending admin requests (users with adminRequested flag)
+  async getPendingAdminRequests() {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const result = await this.db.find({
+        selector: {
+          $or: [
+            { type: 'member', adminRequested: true },
+            { type: 'user', adminRequested: true }
+          ]
+        },
+        sort: [{ createdAt: 'desc' }]
+      });
+
+      return result.docs;
+    } catch (error) {
+      console.error('Error getting pending admin requests:', error);
+      throw error;
+    }
+  }
+
+  // Approve member registration
+  async approveMemberRegistration(memberId, approvedBy) {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const member = await this.db.get(memberId);
+      
+      if (member.type !== 'member') {
+        throw new Error('Invalid member ID');
+      }
+
+      member.status = 'approved';
+      member.approvedAt = new Date().toISOString();
+      member.approvedBy = approvedBy;
+      member.updatedAt = new Date().toISOString();
+
+      const response = await this.db.put(member);
+      return { ...member, _rev: response.rev };
+    } catch (error) {
+      console.error('Error approving registration:', error);
+      throw error;
+    }
+  }
+
+  // Deny member registration
+  async denyMemberRegistration(memberId, deniedBy, reason = '') {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const member = await this.db.get(memberId);
+      
+      if (member.type !== 'member') {
+        throw new Error('Invalid member ID');
+      }
+
+      member.status = 'denied';
+      member.deniedAt = new Date().toISOString();
+      member.deniedBy = deniedBy;
+      member.denialReason = reason;
+      member.updatedAt = new Date().toISOString();
+
+      const response = await this.db.put(member);
+      return { ...member, _rev: response.rev };
+    } catch (error) {
+      console.error('Error denying registration:', error);
+      throw error;
+    }
+  }
+
+  // Promote user/member to admin
+  async promoteToAdmin(userId, promotedBy) {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const user = await this.db.get(userId);
+
+      user.isAdmin = true;
+      user.adminRequested = false;
+      user.promotedToAdminAt = new Date().toISOString();
+      user.promotedBy = promotedBy;
+      user.updatedAt = new Date().toISOString();
+
+      const response = await this.db.put(user);
+      return { ...user, _rev: response.rev };
+    } catch (error) {
+      console.error('Error promoting to admin:', error);
+      throw error;
+    }
+  }
+
+  // Deny admin request
+  async denyAdminRequest(userId, deniedBy, reason = '') {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const user = await this.db.get(userId);
+
+      user.adminRequested = false;
+      user.adminRequestDeniedAt = new Date().toISOString();
+      user.adminRequestDeniedBy = deniedBy;
+      user.adminDenialReason = reason;
+      user.updatedAt = new Date().toISOString();
+
+      const response = await this.db.put(user);
+      return { ...user, _rev: response.rev };
+    } catch (error) {
+      console.error('Error denying admin request:', error);
+      throw error;
+    }
+  }
+
+  // Request admin privileges (for existing members/users)
+  async requestAdminPrivileges(userId) {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const user = await this.db.get(userId);
+
+      // Check if already admin
+      if (user.isAdmin || user.isSuperAdmin) {
+        throw new Error('User already has admin privileges');
+      }
+
+      user.adminRequested = true;
+      user.adminRequestedAt = new Date().toISOString();
+      user.updatedAt = new Date().toISOString();
+
+      const response = await this.db.put(user);
+      return { ...user, _rev: response.rev };
+    } catch (error) {
+      console.error('Error requesting admin privileges:', error);
+      throw error;
+    }
+  }
+
   // Destroy database (for testing)
   async destroyDatabase() {
     try {

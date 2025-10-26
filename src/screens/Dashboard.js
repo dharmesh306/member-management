@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import DatabaseService from '../services/DatabaseService';
 import SyncStatus from '../components/SyncStatus';
-import { canEditMember, canDeleteMember, canCreateMember, hasAdminPrivileges, getUserRoleDisplay } from '../utils/authorization';
+import { canEditMember, canDeleteMember, canCreateMember, hasAdminPrivileges, getUserRoleDisplay, canApproveRegistrations } from '../utils/authorization';
 
-const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
+const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, currentUser }) => {
   const [members, setMembers] = useState([]);
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -311,6 +311,13 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, currentUser }) => {
         </TouchableOpacity>
       )}
 
+      {/* Admin Management Button - Only for admins */}
+      {canApproveRegistrations(currentUser) && (
+        <TouchableOpacity style={styles.adminManagementButton} onPress={onAdminManagement}>
+          <Text style={styles.adminManagementButtonText}>⚙ Admin Management</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Results Count */}
       {searchQuery && (
         <Text style={styles.resultsText}>
@@ -476,6 +483,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addMemberButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  adminManagementButton: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#9b59b6',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+  },
+  adminManagementButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
