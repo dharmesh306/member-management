@@ -318,10 +318,10 @@ class DatabaseService {
         return allMembers;
       }
 
-      // If user is a regular member/spouse, return only their record
+      // If user is a regular member/spouse, return all members (they can view all, but edit only their own)
       if (currentUser && (currentUser.loginType === 'member' || currentUser.loginType === 'spouse')) {
-        console.log('Regular user - returning only their record');
-        return allMembers.filter(member => member._id === currentUser._id);
+        console.log('Regular user - returning all members for viewing:', allMembers.length);
+        return allMembers;
       }
 
       // No user or invalid user, return empty array

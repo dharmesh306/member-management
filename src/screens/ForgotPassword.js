@@ -13,11 +13,15 @@ import {
 import AuthService from '../services/AuthService';
 
 const ForgotPassword = ({ onNavigateToLogin, onNavigateToResetPassword }) => {
-  const [step, setStep] = useState(1); // 1: request reset, 2: show success
+  const [step, setStep] = useState(1); // 1: enter email/phone, 2: enter code, 3: enter new password
   const [identifier, setIdentifier] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetToken, setResetToken] = useState('');
+  const [resetMethod, setResetMethod] = useState('email');
 
   const handleRequestReset = async () => {
     setError('');
@@ -30,21 +34,30 @@ const ForgotPassword = ({ onNavigateToLogin, onNavigateToResetPassword }) => {
     try {
       setLoading(true);
       // Automatically detect reset method based on identifier format
-      const resetMethod = identifier.includes('@') ? 'email' : 'sms';
+      const method = identifier.includes('@') ? 'email' : 'sms';
+      setResetMethod(method);
+      
       const result = await AuthService.requestPasswordReset(
         identifier.trim(),
-        resetMethod
+        method
       );
 
       if (result.success) {
         setResetToken(result.resetToken);
         setStep(2);
-        Alert.alert(
-          'Success',
-          `Password reset instructions have been sent to your ${resetMethod === 'email' ? 'email' : 'phone'}`
-        );
+        
+        if (Platform.OS === 'web') {
+          window.alert(
+            `Verification code sent to your ${method === 'email' ? 'email' : 'phone'}!`
+          );
+        } else {
+          Alert.alert(
+            'Success',
+            `Verification code sent to your ${method === 'email' ? 'email' : 'phone'}`
+          );
+        }
       } else {
-        setError(result.error || 'Failed to send reset instructions');
+        setError(result.error || 'Failed to send verification code');
       }
     } catch (err) {
       setError('An error occurred. Please try again.');
@@ -54,61 +67,219 @@ const ForgotPassword = ({ onNavigateToLogin, onNavigateToResetPassword }) => {
     }
   };
 
+  const handleVerifyCode = async () => {
+    setError('');
+
+    if (!verificationCode.trim()) {
+      setError('Please enter the verification code');
+      return;
+    }
+
+    // Verify the code matches the reset token (first 6 characters)
+    if (verificationCode.trim() !== resetToken.substring(0, 6)) {
+      setError('Invalid verification code. Please try again.');
+      return;
+    }
+
+    // Code is valid, move to password reset step
+    setStep(3);
+  };
+
+  const handleResetPassword = async () => {
+    setError('');
+
+    if (!newPassword.trim()) {
+      setError('Please enter a new password');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const result = await AuthService.resetPassword(resetToken, newPassword);
+
+      if (result.success) {
+        if (Platform.OS === 'web') {
+          window.alert('Password reset successful! Please login with your new password.');
+        } else {
+          Alert.alert('Success', 'Password reset successful! Please login with your new password.');
+        }
+        onNavigateToLogin();
+      } else {
+        setError(result.error || 'Failed to reset password');
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Enter verification code
   if (step === 2) {
-    const resetMethod = identifier.includes('@') ? 'email' : 'sms';
     return (
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
-          <View style={styles.successHeader}>
-            <Text style={styles.successIcon}>✓</Text>
-            <Text style={styles.successTitle}>Check Your {resetMethod === 'email' ? 'Email' : 'Messages'}</Text>
-          </View>
-
-          <Text style={styles.successMessage}>
-            We've sent password reset instructions to{' '}
-            {resetMethod === 'email' ? 'your email address' : 'your mobile number'}.
-          </Text>
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              • The link will expire in 1 hour{'\n'}
-              • Check your spam folder if you don't see it{'\n'}
-              • For security, we can't confirm if this account exists
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Enter Verification Code</Text>
+            <Text style={styles.subtitle}>
+              We've sent a 6-digit code to your {resetMethod === 'email' ? 'email' : 'phone'}
             </Text>
+            <Text style={styles.identifierText}>{identifier}</Text>
           </View>
 
-          {/* Development only - show token */}
-          {__DEV__ && resetToken && (
+          {/* Error Message */}
+          {error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Development mode - show code */}
+          {resetToken && (
             <View style={styles.devBox}>
-              <Text style={styles.devTitle}>Development Mode</Text>
-              <Text style={styles.devText}>Reset Token: {resetToken}</Text>
-              <TouchableOpacity
-                style={styles.devButton}
-                onPress={() => onNavigateToResetPassword(resetToken)}
-              >
-                <Text style={styles.devButtonText}>Use Token Now</Text>
-              </TouchableOpacity>
+              <Text style={styles.devTitle}>💡 Your Verification Code</Text>
+              <Text style={styles.codeDisplay}>{resetToken.substring(0, 6)}</Text>
+              <Text style={styles.devText}>Enter this code below to continue</Text>
             </View>
           )}
 
+          {/* Verification Code Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Verification Code</Text>
+            <TextInput
+              style={styles.input}
+              value={verificationCode}
+              onChangeText={setVerificationCode}
+              placeholder="Enter 6-digit code"
+              placeholderTextColor="#999"
+              keyboardType="number-pad"
+              maxLength={6}
+              editable={!loading}
+            />
+          </View>
+
+          {/* Verify Button */}
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={onNavigateToLogin}
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+            onPress={handleVerifyCode}
+            disabled={loading}
           >
-            <Text style={styles.backButtonText}>Back to Login</Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Verify Code</Text>
+            )}
           </TouchableOpacity>
 
+          {/* Back and Resend Links */}
+          <View style={styles.linkContainer}>
+            <TouchableOpacity onPress={() => setStep(1)}>
+              <Text style={styles.linkText}>← Change Email/Phone</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleRequestReset}>
+              <Text style={styles.linkText}>Resend Code →</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  // Step 3: Reset password
+  if (step === 3) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Create New Password</Text>
+            <Text style={styles.subtitle}>
+              Enter your new password below
+            </Text>
+          </View>
+
+          {/* Error Message */}
+          {error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* New Password Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>New Password</Text>
+            <TextInput
+              style={styles.input}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="Enter new password"
+              placeholderTextColor="#999"
+              secureTextEntry
+              autoCapitalize="none"
+              editable={!loading}
+            />
+          </View>
+
+          {/* Confirm Password Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Confirm Password</Text>
+            <TextInput
+              style={styles.input}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Confirm new password"
+              placeholderTextColor="#999"
+              secureTextEntry
+              autoCapitalize="none"
+              editable={!loading}
+            />
+          </View>
+
+          {/* Password Requirements */}
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>
+              Password must be at least 6 characters long
+            </Text>
+          </View>
+
+          {/* Reset Password Button */}
           <TouchableOpacity
-            style={styles.resendLink}
-            onPress={() => setStep(1)}
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+            onPress={handleResetPassword}
+            disabled={loading}
           >
-            <Text style={styles.resendText}>Didn't receive it? Try again</Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Reset Password</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Back Link */}
+          <TouchableOpacity
+            style={styles.backLink}
+            onPress={onNavigateToLogin}
+          >
+            <Text style={styles.linkText}>← Back to Login</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
     );
   }
 
+  // Step 1: Enter email/phone
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
@@ -295,6 +466,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2980b9',
     lineHeight: 22,
+  },
+  identifierText: {
+    fontSize: 14,
+    color: '#3498db',
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  codeDisplay: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#856404',
+    textAlign: 'center',
+    letterSpacing: 8,
+    marginVertical: 12,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
+  },
+  linkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  linkText: {
+    color: '#3498db',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  backLink: {
+    marginTop: 16,
+    alignItems: 'center',
   },
   backButton: {
     backgroundColor: '#3498db',

@@ -42,44 +42,54 @@ export const canViewMember = (user, memberId) => {
 
 /**
  * Check if user can edit a specific member record
- * - Admins can edit all records
+ * - Admins can edit all records (but not when logged in as member/spouse)
  * - Regular users can only edit their own record
  */
 export const canEditMember = (user, memberId) => {
   if (!user) return false;
   
-  // Admins can edit all records
-  if (isAdmin(user)) return true;
-  
-  // Regular users can only edit their own record
+  // If logged in as member or spouse, can only edit own record
   if (user.loginType === 'member' || user.loginType === 'spouse') {
     return user._id === memberId;
   }
+  
+  // Admins (when logged in as admin/user) can edit all records
+  if (isAdmin(user)) return true;
   
   return false;
 };
 
 /**
  * Check if user can delete a specific member record
- * - Only admins can delete records
+ * - Only admins can delete records (and not when logged in as member/spouse)
  * - Regular users cannot delete any records (including their own)
  */
 export const canDeleteMember = (user, memberId) => {
   if (!user) return false;
   
-  // Only admins can delete records
+  // If logged in as member or spouse, cannot delete anything
+  if (user.loginType === 'member' || user.loginType === 'spouse') {
+    return false;
+  }
+  
+  // Only admins (when logged in as admin/user) can delete records
   return isAdmin(user);
 };
 
 /**
  * Check if user can create new members
- * - Only admins can create new member records
+ * - Only admins can create new member records (and not when logged in as member/spouse)
  * - Regular users cannot create members
  */
 export const canCreateMember = (user) => {
   if (!user) return false;
   
-  // Only admins can create new members
+  // If logged in as member or spouse, cannot create members
+  if (user.loginType === 'member' || user.loginType === 'spouse') {
+    return false;
+  }
+  
+  // Only admins (when logged in as admin/user) can create new members
   return isAdmin(user);
 };
 

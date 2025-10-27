@@ -259,27 +259,36 @@ class AuthService {
       await DatabaseService.updateMember(member._id, member);
 
       // In production, send email or SMS here
-      // For now, return the token (in production, don't return this)
+      // For now, log the code for testing
+      const verificationCode = resetToken.substring(0, 6);
       const resetLink = `http://localhost:3000/reset-password?token=${resetToken}`;
       
       if (resetMethod === 'email') {
         const email = isMemberReset ? member.email : member.spouse.email;
-        console.log(`Reset email would be sent to: ${email}`);
+        console.log('=== PASSWORD RESET EMAIL ===');
+        console.log(`To: ${email}`);
+        console.log(`Verification Code: ${verificationCode}`);
         console.log(`Reset link: ${resetLink}`);
+        console.log('===========================');
         // TODO: Implement email sending service
+        // Example: await EmailService.sendPasswordReset(email, verificationCode);
       } else {
         const mobile = isMemberReset ? member.mobile : member.spouse.mobile;
-        console.log(`Reset SMS would be sent to: ${mobile}`);
-        console.log(`Reset code: ${resetToken.substring(0, 6)}`);
+        console.log('=== PASSWORD RESET SMS ===');
+        console.log(`To: ${mobile}`);
+        console.log(`Message: Your password reset code is: ${verificationCode}`);
+        console.log(`Code expires in 1 hour.`);
+        console.log('===========================');
         // TODO: Implement SMS sending service
+        // Example: await SMSService.send(mobile, `Your reset code is: ${verificationCode}`);
       }
 
       return {
         success: true,
-        message: `Password reset instructions sent via ${resetMethod}`,
+        message: `Verification code sent via ${resetMethod}`,
         // Remove these in production
         resetToken,
-        resetLink,
+        verificationCode,
       };
     } catch (error) {
       console.error('Password reset request error:', error);

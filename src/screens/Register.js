@@ -171,10 +171,9 @@ const styles = StyleSheet.create({
   },
   passwordSection: {
     backgroundColor: '#fff',
-    margin: 16,
-    marginTop: 0,
-    padding: 20,
-    borderRadius: 12,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
     ...Platform.select({
       web: {
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)',

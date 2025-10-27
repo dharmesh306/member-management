@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import AuthService from '../services/AuthService';
+import OAuthService from '../services/OAuthService';
 
 const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPassword }) => {
   const [identifier, setIdentifier] = useState('');
@@ -49,6 +50,30 @@ const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPasswor
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    if (Platform.OS === 'web') {
+      OAuthService.loginWithGoogle();
+    } else {
+      setError('OAuth login is only available on web');
+    }
+  };
+
+  const handleFacebookLogin = () => {
+    if (Platform.OS === 'web') {
+      OAuthService.loginWithFacebook();
+    } else {
+      setError('OAuth login is only available on web');
+    }
+  };
+
+  const handleMicrosoftLogin = () => {
+    if (Platform.OS === 'web') {
+      OAuthService.loginWithMicrosoft();
+    } else {
+      setError('OAuth login is only available on web');
     }
   };
 
@@ -117,6 +142,40 @@ const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPasswor
             <Text style={styles.loginButtonText}>Sign In</Text>
           )}
         </TouchableOpacity>
+
+        {/* Divider */}
+        <View style={styles.dividerContainer}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* OAuth Buttons */}
+        <View style={styles.oauthContainer}>
+          <TouchableOpacity
+            style={[styles.oauthButton, styles.googleButton]}
+            onPress={handleGoogleLogin}
+            disabled={loading}
+          >
+            <Text style={styles.oauthButtonText}>🔵 Google</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.oauthButton, styles.facebookButton]}
+            onPress={handleFacebookLogin}
+            disabled={loading}
+          >
+            <Text style={styles.oauthButtonText}>📘 Facebook</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.oauthButton, styles.microsoftButton]}
+            onPress={handleMicrosoftLogin}
+            disabled={loading}
+          >
+            <Text style={styles.oauthButtonText}>🪟 Outlook</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Register Link */}
         <View style={styles.registerContainer}>
@@ -228,10 +287,56 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '600',
+  },
+  oauthContainer: {
+    marginBottom: 16,
+  },
+  oauthButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+  },
+  googleButton: {
+    borderColor: '#4285F4',
+  },
+  facebookButton: {
+    borderColor: '#1877F2',
+  },
+  microsoftButton: {
+    borderColor: '#00A4EF',
+  },
+  oauthButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
   registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 8,
   },
   registerText: {
     fontSize: 14,
