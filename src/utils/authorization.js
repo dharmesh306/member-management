@@ -5,7 +5,12 @@
  */
 export const isAdmin = (user) => {
   if (!user) return false;
-  return user.isAdmin === true || user.isSuperAdmin === true;
+  return (
+    user.isAdmin === true || 
+    user.isSuperAdmin === true ||
+    user.role === 'admin' ||
+    user.role === 'superadmin'
+  );
 };
 
 /**
@@ -13,7 +18,7 @@ export const isAdmin = (user) => {
  */
 export const isSuperAdmin = (user) => {
   if (!user) return false;
-  return user.isSuperAdmin === true;
+  return user.isSuperAdmin === true || user.role === 'superadmin';
 };
 
 /**
@@ -120,20 +125,30 @@ export const hasAdminPrivileges = (user) => {
 
 /**
  * Check if user can manage other users (approve registrations, manage admins)
- * Only super admins can manage users
+ * Admins and super admins can manage users
  */
 export const canManageUsers = (user) => {
   if (!user) return false;
-  return user.isSuperAdmin === true;
+  return (
+    user.isSuperAdmin === true ||
+    user.isAdmin === true ||
+    user.role === 'admin' ||
+    user.role === 'superadmin'
+  );
 };
 
 /**
  * Check if user can approve/deny new admin requests
- * Only super admins can approve admins
+ * Admins and super admins can approve admins
  */
 export const canApproveAdmins = (user) => {
   if (!user) return false;
-  return user.isSuperAdmin === true;
+  return (
+    user.isSuperAdmin === true ||
+    user.isAdmin === true ||
+    user.role === 'admin' ||
+    user.role === 'superadmin'
+  );
 };
 
 /**

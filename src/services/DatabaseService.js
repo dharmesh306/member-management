@@ -94,6 +94,27 @@ class DatabaseService {
         }
       });
 
+      // Index for type and status (for pending registrations)
+      await this.db.createIndex({
+        index: {
+          fields: ['type', 'status']
+        }
+      });
+
+      // Index for type and status with createdAt for sorting
+      await this.db.createIndex({
+        index: {
+          fields: ['type', 'status', 'createdAt']
+        }
+      });
+
+      // Index for admin requests
+      await this.db.createIndex({
+        index: {
+          fields: ['type', 'adminRequested']
+        }
+      });
+
       console.log('Indexes created successfully');
     } catch (error) {
       console.error('Error creating indexes:', error);
@@ -257,12 +278,18 @@ class DatabaseService {
         this.initDatabase();
       }
       
-      const result = await this.db.allDocs({
+      // Use remote DB if available for consistency
+      const queryDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Getting all members from ${dbType} database...`);
+      
+      const result = await queryDB.allDocs({
         include_docs: true,
         startkey: 'member_',
         endkey: 'member_\ufff0',
       });
 
+      console.log(`Found ${result.rows.length} total members in ${dbType} DB`);
       return result.rows.map(row => row.doc);
     } catch (error) {
       console.error('Error getting all members:', error);
@@ -281,16 +308,24 @@ class DatabaseService {
       const allMembers = await this.getAllMembers();
 
       // If user is admin or super admin, return all members
-      if (currentUser && (currentUser.isAdmin || currentUser.isSuperAdmin)) {
+      if (currentUser && (
+        currentUser.role === 'admin' || 
+        currentUser.role === 'superadmin' ||
+        currentUser.isAdmin || 
+        currentUser.isSuperAdmin
+      )) {
+        console.log('Admin user - returning all members:', allMembers.length);
         return allMembers;
       }
 
       // If user is a regular member/spouse, return only their record
       if (currentUser && (currentUser.loginType === 'member' || currentUser.loginType === 'spouse')) {
+        console.log('Regular user - returning only their record');
         return allMembers.filter(member => member._id === currentUser._id);
       }
 
       // No user or invalid user, return empty array
+      console.log('No valid user - returning empty array');
       return [];
     } catch (error) {
       console.error('Error getting members for user:', error);
@@ -390,15 +425,47 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const result = await this.db.find({
-        selector: {
-          type: 'member',
-          status: 'pending'
-        },
-        sort: [{ createdAt: 'desc' }]
-      });
+      console.log('Fetching pending registrations...');
+      
+      // Use remote DB if available, otherwise use local
+      const queryDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Querying ${dbType} database...`);
+      
+      // Debug: Check total documents in DB
+      const info = await queryDB.info();
+      console.log(`${dbType} DB info:`, info);
 
-      return result.docs;
+      // First, try with index
+      try {
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            status: 'pending'
+          },
+          sort: [{ createdAt: 'desc' }]
+        });
+
+        console.log(`Found ${result.docs.length} pending registrations from ${dbType} DB`);
+        return result.docs;
+      } catch (indexError) {
+        console.log('Index query failed, trying without sort:', indexError.message);
+        
+        // Fallback: query without sort
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            status: 'pending'
+          }
+        });
+
+        console.log(`Found ${result.docs.length} pending registrations (no sort) from ${dbType} DB`);
+        
+        // Sort manually
+        return result.docs.sort((a, b) => 
+          new Date(b.createdAt) - new Date(a.createdAt)
+        );
+      }
     } catch (error) {
       console.error('Error getting pending registrations:', error);
       throw error;
@@ -412,17 +479,41 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const result = await this.db.find({
-        selector: {
-          $or: [
-            { type: 'member', adminRequested: true },
-            { type: 'user', adminRequested: true }
-          ]
-        },
-        sort: [{ createdAt: 'desc' }]
-      });
+      // Use remote DB if available, otherwise use local
+      const queryDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Querying ${dbType} database for admin requests...`);
 
-      return result.docs;
+      try {
+        // Try with sort first
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            adminRequested: true
+          },
+          sort: [{ createdAt: 'desc' }]
+        });
+
+        console.log(`Found ${result.docs.length} pending admin requests from ${dbType} DB`);
+        return result.docs;
+      } catch (indexError) {
+        console.log('Index query failed for admin requests, trying without sort:', indexError.message);
+        
+        // Fallback: query without sort
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            adminRequested: true
+          }
+        });
+
+        console.log(`Found ${result.docs.length} pending admin requests (no sort) from ${dbType} DB`);
+        
+        // Sort manually
+        return result.docs.sort((a, b) => 
+          new Date(b.createdAt) - new Date(a.createdAt)
+        );
+      }
     } catch (error) {
       console.error('Error getting pending admin requests:', error);
       throw error;
@@ -436,17 +527,47 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const result = await this.db.find({
-        selector: {
-          $or: [
-            { isAdmin: true },
-            { isSuperAdmin: true }
-          ]
-        },
-        sort: [{ createdAt: 'desc' }]
-      });
+      // Use remote DB if available, otherwise use local
+      const queryDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Querying ${dbType} database for all admins...`);
 
-      return result.docs;
+      try {
+        // Try with sort first
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            $or: [
+              { role: 'admin' },
+              { role: 'superadmin' }
+            ]
+          },
+          sort: [{ createdAt: 'desc' }]
+        });
+
+        console.log(`Found ${result.docs.length} admins from ${dbType} DB`);
+        return result.docs;
+      } catch (indexError) {
+        console.log('Index query failed for admins, trying without sort:', indexError.message);
+        
+        // Fallback: query without sort
+        const result = await queryDB.find({
+          selector: {
+            type: 'member',
+            $or: [
+              { role: 'admin' },
+              { role: 'superadmin' }
+            ]
+          }
+        });
+
+        console.log(`Found ${result.docs.length} admins (no sort) from ${dbType} DB`);
+        
+        // Sort manually
+        return result.docs.sort((a, b) => 
+          new Date(b.createdAt) - new Date(a.createdAt)
+        );
+      }
     } catch (error) {
       console.error('Error getting all admins:', error);
       throw error;
@@ -460,7 +581,12 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const member = await this.db.get(memberId);
+      // Use remote DB if available for consistency
+      const updateDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Approving member in ${dbType} database...`);
+
+      const member = await updateDB.get(memberId);
       
       if (member.type !== 'member') {
         throw new Error('Invalid member ID');
@@ -471,7 +597,8 @@ class DatabaseService {
       member.approvedBy = approvedBy;
       member.updatedAt = new Date().toISOString();
 
-      const response = await this.db.put(member);
+      const response = await updateDB.put(member);
+      console.log(`Member ${memberId} approved successfully in ${dbType} DB`);
       return { ...member, _rev: response.rev };
     } catch (error) {
       console.error('Error approving registration:', error);
@@ -486,7 +613,12 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const member = await this.db.get(memberId);
+      // Use remote DB if available for consistency
+      const updateDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Denying member in ${dbType} database...`);
+
+      const member = await updateDB.get(memberId);
       
       if (member.type !== 'member') {
         throw new Error('Invalid member ID');
@@ -498,7 +630,8 @@ class DatabaseService {
       member.denialReason = reason;
       member.updatedAt = new Date().toISOString();
 
-      const response = await this.db.put(member);
+      const response = await updateDB.put(member);
+      console.log(`Member ${memberId} denied successfully in ${dbType} DB`);
       return { ...member, _rev: response.rev };
     } catch (error) {
       console.error('Error denying registration:', error);
@@ -513,18 +646,60 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const user = await this.db.get(userId);
+      // Use remote DB if available for consistency
+      const updateDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Promoting user to admin in ${dbType} database...`);
 
-      user.isAdmin = true;
+      const user = await updateDB.get(userId);
+
+      user.role = 'admin'; // Update to use 'role' field
       user.adminRequested = false;
       user.promotedToAdminAt = new Date().toISOString();
       user.promotedBy = promotedBy;
       user.updatedAt = new Date().toISOString();
 
-      const response = await this.db.put(user);
+      const response = await updateDB.put(user);
+      console.log(`User ${userId} promoted to admin successfully in ${dbType} DB`);
       return { ...user, _rev: response.rev };
     } catch (error) {
       console.error('Error promoting to admin:', error);
+      throw error;
+    }
+  }
+
+  // Demote admin to regular member
+  async demoteFromAdmin(userId, demotedBy) {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      // Use remote DB if available for consistency
+      const updateDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Demoting admin to member in ${dbType} database...`);
+
+      const user = await updateDB.get(userId);
+
+      // Remove admin privileges (but not superadmin)
+      if (user.isSuperAdmin || user.role === 'superadmin') {
+        throw new Error('Cannot demote super admin');
+      }
+
+      // Clear admin-related fields
+      delete user.role;
+      delete user.isAdmin;
+      user.adminRequested = false;
+      user.demotedFromAdminAt = new Date().toISOString();
+      user.demotedBy = demotedBy;
+      user.updatedAt = new Date().toISOString();
+
+      const response = await updateDB.put(user);
+      console.log(`User ${userId} demoted from admin successfully in ${dbType} DB`);
+      return { ...user, _rev: response.rev };
+    } catch (error) {
+      console.error('Error demoting from admin:', error);
       throw error;
     }
   }
@@ -536,7 +711,12 @@ class DatabaseService {
         this.initDatabase();
       }
 
-      const user = await this.db.get(userId);
+      // Use remote DB if available for consistency
+      const updateDB = this.remoteDB || this.db;
+      const dbType = this.remoteDB ? 'remote' : 'local';
+      console.log(`Denying admin request in ${dbType} database...`);
+
+      const user = await updateDB.get(userId);
 
       user.adminRequested = false;
       user.adminRequestDeniedAt = new Date().toISOString();
@@ -544,7 +724,8 @@ class DatabaseService {
       user.adminDenialReason = reason;
       user.updatedAt = new Date().toISOString();
 
-      const response = await this.db.put(user);
+      const response = await updateDB.put(user);
+      console.log(`Admin request denied for ${userId} in ${dbType} DB`);
       return { ...user, _rev: response.rev };
     } catch (error) {
       console.error('Error denying admin request:', error);

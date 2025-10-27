@@ -8,6 +8,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import MemberForm from '../components/MemberForm';
 import AuthService from '../services/AuthService';
@@ -16,15 +17,10 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPasswordFields, setShowPasswordFields] = useState(false);
   const [memberData, setMemberData] = useState(null);
 
-  const handleMemberFormSubmit = (data) => {
-    setMemberData(data);
-    setShowPasswordFields(true);
-  };
-
-  const handleRegister = async () => {
+  const handleMemberFormSubmit = async (data) => {
+    // Validate password fields
     if (!password || password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
@@ -37,97 +33,46 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
 
     try {
       setLoading(true);
-      const result = await AuthService.register(memberData, password);
+      const result = await AuthService.register(data, password);
 
       if (result.success) {
+        // Clear form
+        setPassword('');
+        setConfirmPassword('');
+        
+        // Show success message and navigate to login
         Alert.alert(
-          'Success',
-          'Registration successful! You can now login.',
-          [{ text: 'OK', onPress: onNavigateToLogin }]
+          'Registration Successful! 🎉',
+          'Your account has been created and is currently in pending status.\n\n' +
+          '✓ Your registration will be reviewed by an admin\n' +
+          '✓ Approval typically takes up to 24 hours\n' +
+          '✓ You will receive an email or SMS notification when your account is approved\n\n' +
+          'Once approved, you can login with your credentials.',
+          [
+            { 
+              text: 'Go to Login', 
+              onPress: () => {
+                setLoading(false);
+                onNavigateToLogin();
+              }
+            }
+          ],
+          { cancelable: false }
         );
       } else {
         Alert.alert('Error', result.error || 'Registration failed');
+        setLoading(false);
       }
     } catch (error) {
       Alert.alert('Error', 'An error occurred during registration');
       console.error(error);
-    } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = () => {
-    if (showPasswordFields) {
-      setShowPasswordFields(false);
-      setPassword('');
-      setConfirmPassword('');
-    } else {
-      onNavigateToLogin();
-    }
+    onNavigateToLogin();
   };
-
-  if (showPasswordFields) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Set Your Password</Text>
-          <Text style={styles.headerSubtitle}>
-            Create a secure password for your account
-          </Text>
-        </View>
-
-        <View style={styles.passwordContainer}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password (min. 6 characters)</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter password"
-              placeholderTextColor="#999"
-              secureTextEntry
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm Password</Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Confirm password"
-              placeholderTextColor="#999"
-              secureTextEntry
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={handleCancel}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Back</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, styles.submitButton, loading && styles.submitButtonDisabled]}
-              onPress={handleRegister}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Complete Registration</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -137,11 +82,44 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
           Fill in your information to create an account
         </Text>
       </View>
-      
-      <MemberForm
-        onSubmit={handleMemberFormSubmit}
-        onCancel={handleCancel}
-      />
+
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+        <MemberForm
+          onSubmit={handleMemberFormSubmit}
+          onCancel={handleCancel}
+          renderExtraFields={() => (
+            <View style={styles.passwordSection}>
+              <Text style={styles.sectionTitle}>Account Security</Text>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Password *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter password (min. 6 characters)"
+                  placeholderTextColor="#999"
+                  secureTextEntry
+                  editable={!loading}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Confirm Password *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm password"
+                  placeholderTextColor="#999"
+                  secureTextEntry
+                  editable={!loading}
+                />
+              </View>
+            </View>
+          )}
+        />
+      </ScrollView>
 
       <View style={styles.loginLinkContainer}>
         <Text style={styles.loginText}>Already have an account? </Text>
@@ -185,10 +163,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ecf0f1',
   },
-  passwordContainer: {
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  passwordSection: {
     backgroundColor: '#fff',
     margin: 16,
-    padding: 24,
+    marginTop: 0,
+    padding: 20,
     borderRadius: 12,
     ...Platform.select({
       web: {
@@ -202,6 +187,12 @@ const styles = StyleSheet.create({
         elevation: 3,
       },
     }),
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
   },
   inputContainer: {
     marginBottom: 16,
@@ -221,43 +212,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     color: '#333',
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  submitButton: {
-    backgroundColor: '#27ae60',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#95a5a6',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   loginLinkContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     padding: 16,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   loginText: {
     fontSize: 14,

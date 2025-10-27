@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,12 @@ import {
   ScrollView,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { createEmptyChild, validateMember } from '../models/MemberModel';
+import DatabaseService from '../services/DatabaseService';
 
-const MemberForm = ({ initialData, onSubmit, onCancel }) => {
+const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
   const [member, setMember] = useState(initialData || {
     firstName: '',
     lastName: '',
@@ -37,19 +39,196 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
   const [showSpouse, setShowSpouse] = useState(
     initialData?.spouse?.firstName ? true : false
   );
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [checkingMobile, setCheckingMobile] = useState(false);
+  const [checkingSpouseEmail, setCheckingSpouseEmail] = useState(false);
+  const [checkingSpouseMobile, setCheckingSpouseMobile] = useState(false);
+
+  // Debounce timer refs
+  const emailTimeoutRef = React.useRef(null);
+  const mobileTimeoutRef = React.useRef(null);
+  const spouseEmailTimeoutRef = React.useRef(null);
+  const spouseMobileTimeoutRef = React.useRef(null);
+
+  // Check for duplicate email
+  const checkEmailDuplicate = useCallback(async (email) => {
+    if (!email || email.length < 3) return;
+    
+    try {
+      setCheckingEmail(true);
+      const result = await DatabaseService.checkDuplicateMember(
+        email,
+        null,
+        initialData?._id
+      );
+      
+      if (result.emailExists) {
+        setErrors(prev => ({
+          ...prev,
+          email: '❌ This email is already registered'
+        }));
+      } else {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          if (newErrors.email === '❌ This email is already registered') {
+            delete newErrors.email;
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      console.error('Error checking email:', error);
+    } finally {
+      setCheckingEmail(false);
+    }
+  }, [initialData]);
+
+  // Check for duplicate mobile
+  const checkMobileDuplicate = useCallback(async (mobile) => {
+    if (!mobile || mobile.length < 10) return;
+    
+    try {
+      setCheckingMobile(true);
+      const result = await DatabaseService.checkDuplicateMember(
+        null,
+        mobile,
+        initialData?._id
+      );
+      
+      if (result.mobileExists) {
+        setErrors(prev => ({
+          ...prev,
+          mobile: '❌ This mobile number is already registered'
+        }));
+      } else {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          if (newErrors.mobile === '❌ This mobile number is already registered') {
+            delete newErrors.mobile;
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      console.error('Error checking mobile:', error);
+    } finally {
+      setCheckingMobile(false);
+    }
+  }, [initialData]);
+
+  // Check for duplicate spouse email
+  const checkSpouseEmailDuplicate = useCallback(async (email) => {
+    if (!email || email.length < 3) return;
+    
+    try {
+      setCheckingSpouseEmail(true);
+      const result = await DatabaseService.checkDuplicateMember(
+        email,
+        null,
+        initialData?._id
+      );
+      
+      if (result.emailExists) {
+        setErrors(prev => ({
+          ...prev,
+          spouse: {
+            ...(prev.spouse || {}),
+            email: '❌ This email is already registered'
+          }
+        }));
+      } else {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          if (newErrors.spouse?.email === '❌ This email is already registered') {
+            delete newErrors.spouse.email;
+            if (Object.keys(newErrors.spouse).length === 0) {
+              delete newErrors.spouse;
+            }
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      console.error('Error checking spouse email:', error);
+    } finally {
+      setCheckingSpouseEmail(false);
+    }
+  }, [initialData]);
+
+  // Check for duplicate spouse mobile
+  const checkSpouseMobileDuplicate = useCallback(async (mobile) => {
+    if (!mobile || mobile.length < 10) return;
+    
+    try {
+      setCheckingSpouseMobile(true);
+      const result = await DatabaseService.checkDuplicateMember(
+        null,
+        mobile,
+        initialData?._id
+      );
+      
+      if (result.mobileExists) {
+        setErrors(prev => ({
+          ...prev,
+          spouse: {
+            ...(prev.spouse || {}),
+            mobile: '❌ This mobile number is already registered'
+          }
+        }));
+      } else {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          if (newErrors.spouse?.mobile === '❌ This mobile number is already registered') {
+            delete newErrors.spouse.mobile;
+            if (Object.keys(newErrors.spouse).length === 0) {
+              delete newErrors.spouse;
+            }
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      console.error('Error checking spouse mobile:', error);
+    } finally {
+      setCheckingSpouseMobile(false);
+    }
+  }, [initialData]);
 
   const handleInputChange = (field, value) => {
     setMember(prev => ({
       ...prev,
       [field]: value,
     }));
-    // Clear error for this field
+    
+    // Clear validation error for this field
     if (errors[field]) {
       setErrors(prev => {
         const newErrors = { ...prev };
-        delete newErrors[field];
+        if (!newErrors[field]?.startsWith('❌')) {
+          delete newErrors[field];
+        }
         return newErrors;
       });
+    }
+
+    // Debounced duplicate check for email
+    if (field === 'email') {
+      if (emailTimeoutRef.current) {
+        clearTimeout(emailTimeoutRef.current);
+      }
+      emailTimeoutRef.current = setTimeout(() => {
+        checkEmailDuplicate(value);
+      }, 800);
+    }
+
+    // Debounced duplicate check for mobile
+    if (field === 'mobile') {
+      if (mobileTimeoutRef.current) {
+        clearTimeout(mobileTimeoutRef.current);
+      }
+      mobileTimeoutRef.current = setTimeout(() => {
+        checkMobileDuplicate(value);
+      }, 800);
     }
   };
 
@@ -61,12 +240,15 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
         [field]: value,
       },
     }));
-    // Clear error for this field
+    
+    // Clear validation error for this field
     if (errors.spouse?.[field]) {
       setErrors(prev => {
         const newErrors = { ...prev };
         if (newErrors.spouse) {
-          delete newErrors.spouse[field];
+          if (!newErrors.spouse[field]?.startsWith('❌')) {
+            delete newErrors.spouse[field];
+          }
           if (Object.keys(newErrors.spouse).length === 0) {
             delete newErrors.spouse;
           }
@@ -74,7 +256,37 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
         return newErrors;
       });
     }
+
+    // Debounced duplicate check for spouse email
+    if (field === 'email') {
+      if (spouseEmailTimeoutRef.current) {
+        clearTimeout(spouseEmailTimeoutRef.current);
+      }
+      spouseEmailTimeoutRef.current = setTimeout(() => {
+        checkSpouseEmailDuplicate(value);
+      }, 800);
+    }
+
+    // Debounced duplicate check for spouse mobile
+    if (field === 'mobile') {
+      if (spouseMobileTimeoutRef.current) {
+        clearTimeout(spouseMobileTimeoutRef.current);
+      }
+      spouseMobileTimeoutRef.current = setTimeout(() => {
+        checkSpouseMobileDuplicate(value);
+      }, 800);
+    }
   };
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (emailTimeoutRef.current) clearTimeout(emailTimeoutRef.current);
+      if (mobileTimeoutRef.current) clearTimeout(mobileTimeoutRef.current);
+      if (spouseEmailTimeoutRef.current) clearTimeout(spouseEmailTimeoutRef.current);
+      if (spouseMobileTimeoutRef.current) clearTimeout(spouseMobileTimeoutRef.current);
+    };
+  }, []);
 
   const handleAddressChange = (field, value) => {
     setMember(prev => ({
@@ -182,28 +394,46 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
         <View style={styles.row}>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email *</Text>
-            <TextInput
-              style={[styles.input, errors.email && styles.inputError]}
-              value={member.email}
-              onChangeText={(value) => handleInputChange('email', value)}
-              placeholder="Enter email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor="#999"
-            />
+            <View style={styles.inputWithIndicator}>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError, checkingEmail && styles.inputChecking]}
+                value={member.email}
+                onChangeText={(value) => handleInputChange('email', value)}
+                placeholder="Enter email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholderTextColor="#999"
+              />
+              {checkingEmail && (
+                <ActivityIndicator 
+                  size="small" 
+                  color="#3498db" 
+                  style={styles.inputIndicator}
+                />
+              )}
+            </View>
             {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
           </View>
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Mobile *</Text>
-            <TextInput
-              style={[styles.input, errors.mobile && styles.inputError]}
-              value={member.mobile}
-              onChangeText={(value) => handleInputChange('mobile', value)}
-              placeholder="Enter mobile number"
-              keyboardType="phone-pad"
-              placeholderTextColor="#999"
-            />
+            <View style={styles.inputWithIndicator}>
+              <TextInput
+                style={[styles.input, errors.mobile && styles.inputError, checkingMobile && styles.inputChecking]}
+                value={member.mobile}
+                onChangeText={(value) => handleInputChange('mobile', value)}
+                placeholder="Enter mobile number"
+                keyboardType="phone-pad"
+                placeholderTextColor="#999"
+              />
+              {checkingMobile && (
+                <ActivityIndicator 
+                  size="small" 
+                  color="#3498db" 
+                  style={styles.inputIndicator}
+                />
+              )}
+            </View>
             {errors.mobile && <Text style={styles.errorText}>{errors.mobile}</Text>}
           </View>
         </View>
@@ -258,15 +488,24 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
             <View style={styles.row}>
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={[styles.input, errors.spouse?.email && styles.inputError]}
-                  value={member.spouse.email}
-                  onChangeText={(value) => handleSpouseChange('email', value)}
-                  placeholder="Enter email"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  placeholderTextColor="#999"
-                />
+                <View style={styles.inputWithIndicator}>
+                  <TextInput
+                    style={[styles.input, errors.spouse?.email && styles.inputError, checkingSpouseEmail && styles.inputChecking]}
+                    value={member.spouse.email}
+                    onChangeText={(value) => handleSpouseChange('email', value)}
+                    placeholder="Enter email"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholderTextColor="#999"
+                  />
+                  {checkingSpouseEmail && (
+                    <ActivityIndicator 
+                      size="small" 
+                      color="#3498db" 
+                      style={styles.inputIndicator}
+                    />
+                  )}
+                </View>
                 {errors.spouse?.email && (
                   <Text style={styles.errorText}>{errors.spouse.email}</Text>
                 )}
@@ -274,14 +513,23 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Mobile</Text>
-                <TextInput
-                  style={[styles.input, errors.spouse?.mobile && styles.inputError]}
-                  value={member.spouse.mobile}
-                  onChangeText={(value) => handleSpouseChange('mobile', value)}
-                  placeholder="Enter mobile number"
-                  keyboardType="phone-pad"
-                  placeholderTextColor="#999"
-                />
+                <View style={styles.inputWithIndicator}>
+                  <TextInput
+                    style={[styles.input, errors.spouse?.mobile && styles.inputError, checkingSpouseMobile && styles.inputChecking]}
+                    value={member.spouse.mobile}
+                    onChangeText={(value) => handleSpouseChange('mobile', value)}
+                    placeholder="Enter mobile number"
+                    keyboardType="phone-pad"
+                    placeholderTextColor="#999"
+                  />
+                  {checkingSpouseMobile && (
+                    <ActivityIndicator 
+                      size="small" 
+                      color="#3498db" 
+                      style={styles.inputIndicator}
+                    />
+                  )}
+                </View>
                 {errors.spouse?.mobile && (
                   <Text style={styles.errorText}>{errors.spouse.mobile}</Text>
                 )}
@@ -458,6 +706,9 @@ const MemberForm = ({ initialData, onSubmit, onCancel }) => {
         ))}
       </View>
 
+      {/* Extra Fields (e.g., Password fields for registration) */}
+      {renderExtraFields && renderExtraFields()}
+
       {/* Action Buttons */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
@@ -531,6 +782,9 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 6,
   },
+  inputWithIndicator: {
+    position: 'relative',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
@@ -542,6 +796,14 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#e74c3c',
+  },
+  inputChecking: {
+    borderColor: '#3498db',
+  },
+  inputIndicator: {
+    position: 'absolute',
+    right: 12,
+    top: Platform.OS === 'web' ? 12 : 10,
   },
   errorText: {
     color: '#e74c3c',

@@ -266,12 +266,20 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
               </View>
             </View>
             <View style={styles.headerActions}>
+              {canApproveRegistrations(currentUser) && (
+                <TouchableOpacity
+                  style={[styles.headerButton, styles.adminManagementHeaderButton]}
+                  onPress={onAdminManagement}
+                >
+                  <Text style={styles.headerButtonText}>⚙ Admin</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.headerButton}
                 onPress={handleRefresh}
                 disabled={refreshing}
               >
-                <Text style={styles.headerButtonText}>{refreshing ? '↻' : '🔄'} Sync</Text>
+                <Text style={styles.headerButtonText}>{refreshing ? '↻ Sync' : '🔄 Sync'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerButton}
@@ -311,20 +319,14 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
         </Text>
       )}
 
-      {/* Action Buttons - Only for admins */}
-      <View style={styles.actionButtonsContainer}>
-        {canCreateMember(currentUser) && (
+      {/* Action Buttons */}
+      {canCreateMember(currentUser) && (
+        <View style={styles.actionButtonsContainer}>
           <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
             <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
           </TouchableOpacity>
-        )}
-
-        {canApproveRegistrations(currentUser) && (
-          <TouchableOpacity style={styles.adminManagementButton} onPress={onAdminManagement}>
-            <Text style={styles.adminManagementButtonText}>⚙ Admin Management</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
       {/* Members List */}
       <FlatList
@@ -420,6 +422,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  adminManagementHeaderButton: {
+    backgroundColor: 'rgba(155, 89, 182, 0.3)',
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   headerButtonText: {
     color: '#fff',

@@ -143,7 +143,14 @@ class AuthService {
 
       // Check if account is pending approval
       if (member.status === 'pending') {
-        throw new Error('Your account is pending admin approval. Please wait for approval before logging in.');
+        throw new Error(
+          'Account Pending Approval\n\n' +
+          'Your registration is currently under review by our admin team.\n\n' +
+          '• Approval typically takes up to 24 hours\n' +
+          '• You will receive an email or SMS notification once approved\n' +
+          '• Please check back later or wait for the notification\n\n' +
+          'Thank you for your patience!'
+        );
       }
 
       // Check if account was denied
