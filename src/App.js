@@ -172,35 +172,7 @@ const App = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2980b9" />
       
-      {/* App Header - only show on dashboard */}
-      {currentScreen === 'dashboard' && (
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.headerTitle}>Member Management</Text>
-              <Text style={styles.headerSubtitle}>
-                Welcome, {currentUser?.firstName || 'User'}
-              </Text>
-            </View>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.changePasswordButton}
-                onPress={() => setCurrentScreen('changePassword')}
-              >
-                <Text style={styles.changePasswordButtonText}>🔑 Change Password</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.logoutButton}
-                onPress={handleLogout}
-              >
-                <Text style={styles.logoutButtonText}>Logout</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Screen Content */}
+      {/* Screen Content - no separate header needed, Dashboard has its own */}
       {renderScreen()}
     </SafeAreaView>
   );

@@ -429,6 +429,30 @@ class DatabaseService {
     }
   }
 
+  // Get all admins (users and members with admin privileges)
+  async getAllAdmins() {
+    try {
+      if (!this.db) {
+        this.initDatabase();
+      }
+
+      const result = await this.db.find({
+        selector: {
+          $or: [
+            { isAdmin: true },
+            { isSuperAdmin: true }
+          ]
+        },
+        sort: [{ createdAt: 'desc' }]
+      });
+
+      return result.docs;
+    } catch (error) {
+      console.error('Error getting all admins:', error);
+      throw error;
+    }
+  }
+
   // Approve member registration
   async approveMemberRegistration(memberId, approvedBy) {
     try {

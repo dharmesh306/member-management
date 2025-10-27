@@ -18,12 +18,31 @@ const AdminManagement = ({ currentUser, onBack }) => {
   const [activeTab, setActiveTab] = useState('registrations');
   const [pendingRegistrations, setPendingRegistrations] = useState([]);
   const [pendingAdminRequests, setPendingAdminRequests] = useState([]);
+  const [allAdmins, setAllAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [denialModalVisible, setDenialModalVisible] = useState(false);
   const [denialReason, setDenialReason] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [denialType, setDenialType] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter function based on search query
+  const filterItems = (items) => {
+    if (!searchQuery.trim()) return items;
+    
+    const query = searchQuery.toLowerCase();
+    return items.filter(item => 
+      (item.name && item.name.toLowerCase().includes(query)) ||
+      (item.email && item.email.toLowerCase().includes(query)) ||
+      (item.username && item.username.toLowerCase().includes(query)) ||
+      (item.phone && item.phone.toLowerCase().includes(query))
+    );
+  };
+
+  const filteredRegistrations = filterItems(pendingRegistrations);
+  const filteredAdminRequests = filterItems(pendingAdminRequests);
+  const filteredAdmins = filterItems(allAdmins);
 
   useEffect(() => {
     loadData();
@@ -32,12 +51,14 @@ const AdminManagement = ({ currentUser, onBack }) => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [registrations, adminRequests] = await Promise.all([
+      const [registrations, adminRequests, admins] = await Promise.all([
         DatabaseService.getPendingRegistrations(),
         DatabaseService.getPendingAdminRequests(),
+        DatabaseService.getAllAdmins(), // We'll create this method
       ]);
       setPendingRegistrations(registrations);
       setPendingAdminRequests(adminRequests);
+      setAllAdmins(admins);
     } catch (error) {
       Alert.alert('Error', 'Failed to load pending items');
       console.error(error);
@@ -225,6 +246,46 @@ const AdminManagement = ({ currentUser, onBack }) => {
     );
   };
 
+  const renderAdminCard = ({ item }) => {
+    const name = item.firstName ? `${item.firstName} ${item.lastName}` : item.name || item.email;
+    const role = item.isSuperAdmin ? 'Super Admin' : 'Admin';
+    const roleStyle = item.isSuperAdmin ? styles.superAdminBadge : styles.adminBadge;
+    
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.memberInfo}>
+            <View style={styles.nameWithBadge}>
+              <Text style={styles.memberName}>{name}</Text>
+              <View style={roleStyle}>
+                <Text style={styles.roleBadgeText}>{role}</Text>
+              </View>
+            </View>
+            <Text style={styles.memberEmail}>{item.email}</Text>
+            {item.mobile && <Text style={styles.memberMobile}>{item.mobile}</Text>}
+            {item.username && <Text style={styles.memberMobile}>Username: {item.username}</Text>}
+            {item.createdAt && (
+              <Text style={styles.registeredDate}>
+                Member Since: {new Date(item.createdAt).toLocaleDateString()}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {item.address && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Address:</Text>
+            <Text style={styles.sectionText}>
+              {item.address.street && `${item.address.street}, `}
+              {item.address.city && `${item.address.city}, `}
+              {item.address.state} {item.address.zipCode}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyText}>
@@ -273,7 +334,7 @@ const AdminManagement = ({ currentUser, onBack }) => {
                 activeTab === 'registrations' && styles.activeTabText,
               ]}
             >
-              Registrations ({pendingRegistrations.length})
+              Registrations ({filteredRegistrations.length})
             </Text>
           </TouchableOpacity>
         )}
@@ -291,8 +352,45 @@ const AdminManagement = ({ currentUser, onBack }) => {
                 activeTab === 'admin' && styles.activeTabText,
               ]}
             >
-              Admin Requests ({pendingAdminRequests.length})
+              Admin Requests ({filteredAdminRequests.length})
             </Text>
+          </TouchableOpacity>
+        )}
+        {canManageAdmins && (
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              activeTab === 'allAdmins' && styles.activeTab,
+            ]}
+            onPress={() => setActiveTab('allAdmins')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'allAdmins' && styles.activeTabText,
+              ]}
+            >
+              All Admins ({allAdmins.length})
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name, email, username, or phone..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery !== '' && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -301,13 +399,17 @@ const AdminManagement = ({ currentUser, onBack }) => {
       <FlatList
         data={
           activeTab === 'registrations'
-            ? pendingRegistrations
-            : pendingAdminRequests
+            ? filteredRegistrations
+            : activeTab === 'admin'
+            ? filteredAdminRequests
+            : filteredAdmins
         }
         renderItem={
           activeTab === 'registrations'
             ? renderRegistrationCard
-            : renderAdminRequestCard
+            : activeTab === 'admin'
+            ? renderAdminRequestCard
+            : renderAdminCard
         }
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
@@ -615,6 +717,64 @@ const styles = StyleSheet.create({
   modalConfirmButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+  },
+  clearButton: {
+    marginLeft: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clearButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  nameWithBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
+  adminBadge: {
+    backgroundColor: '#3498db',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  superAdminBadge: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  roleBadgeText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '600',
   },
 });

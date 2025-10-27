@@ -20,11 +20,6 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    total: 0,
-    withSpouse: 0,
-    withChildren: 0,
-  });
 
   // Initialize database and load members
   useEffect(() => {
@@ -47,8 +42,14 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
       // Use the new permission-aware method
       const data = await DatabaseService.getMembersForUser(currentUser);
       setMembers(data);
-      setFilteredMembers(data);
-      calculateStats(data);
+      // Don't set filteredMembers here - keep it empty until search
+      if (searchQuery.trim()) {
+        // If there's a search query, filter the data
+        handleSearch(searchQuery, data);
+      } else {
+        // Keep filtered members empty when no search
+        setFilteredMembers([]);
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to load members');
       console.error(error);
@@ -58,30 +59,24 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
     }
   };
 
-  const calculateStats = (data) => {
-    const total = data.length;
-    const withSpouse = data.filter(m => m.spouse?.firstName).length;
-    const withChildren = data.filter(m => m.children?.length > 0).length;
-    setStats({ total, withSpouse, withChildren });
-  };
-
   // Optimized search with debouncing effect
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      handleSearch(searchQuery);
+      handleSearch(searchQuery, members);
     }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery, members]);
 
-  const handleSearch = useCallback((query) => {
+  const handleSearch = useCallback((query, memberList = members) => {
     if (!query.trim()) {
-      setFilteredMembers(members);
+      // If no search query, show empty list
+      setFilteredMembers([]);
       return;
     }
 
     const lowercaseQuery = query.toLowerCase();
-    const filtered = members.filter(member => {
+    const filtered = memberList.filter(member => {
       const firstName = member.firstName?.toLowerCase() || '';
       const lastName = member.lastName?.toLowerCase() || '';
       const email = member.email?.toLowerCase() || '';
@@ -223,13 +218,20 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
 
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>
-        {searchQuery ? 'No members found matching your search' : 'No members yet'}
-      </Text>
-      {!searchQuery && (
-        <TouchableOpacity style={styles.emptyButton} onPress={onAddMember}>
-          <Text style={styles.emptyButtonText}>Add Your First Member</Text>
-        </TouchableOpacity>
+      {searchQuery ? (
+        <Text style={styles.emptyText}>
+          No members found matching your search
+        </Text>
+      ) : (
+        <>
+          <Text style={styles.emptyIcon}>🔍</Text>
+          <Text style={styles.emptyText}>
+            Start typing to search members
+          </Text>
+          <Text style={styles.emptySubtext}>
+            Search by name, email, or mobile number
+          </Text>
+        </>
       )}
     </View>
   );
@@ -245,54 +247,52 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
 
   return (
     <View style={styles.container}>
-      {/* User Role Header */}
+      {/* Unified Dashboard Header */}
       {currentUser && (
-        <View style={styles.userRoleHeader}>
-          <View style={styles.userRoleInfo}>
-            <Text style={styles.userRoleLabel}>Logged in as:</Text>
-            <Text style={styles.userRoleName}>
-              {currentUser.firstName} {currentUser.lastName}
-            </Text>
-            <View style={[
-              styles.roleBadge,
-              hasAdminPrivileges(currentUser) ? styles.roleBadgeAdmin : styles.roleBadgeUser
-            ]}>
-              <Text style={styles.roleBadgeText}>{getUserRoleDisplay(currentUser)}</Text>
+        <View style={styles.dashboardHeader}>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.appTitle}>Member Management</Text>
+              <View style={styles.userInfoRow}>
+                <Text style={styles.userName}>
+                  {currentUser.firstName} {currentUser.lastName}
+                </Text>
+                <View style={[
+                  styles.roleBadge,
+                  hasAdminPrivileges(currentUser) ? styles.roleBadgeAdmin : styles.roleBadgeUser
+                ]}>
+                  <Text style={styles.roleBadgeText}>{getUserRoleDisplay(currentUser)}</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={handleRefresh}
+                disabled={refreshing}
+              >
+                <Text style={styles.headerButtonText}>{refreshing ? '↻' : '🔄'} Sync</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={onLogout}
+              >
+                <Text style={styles.headerButtonText}>Logout</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </TouchableOpacity>
         </View>
       )}
-
-      {/* Sync Status */}
-      <SyncStatus onRefresh={handleRefresh} />
-
-      {/* Stats Dashboard */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats.total}</Text>
-          <Text style={styles.statLabel}>Total Members</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats.withSpouse}</Text>
-          <Text style={styles.statLabel}>With Spouse</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats.withChildren}</Text>
-          <Text style={styles.statLabel}>With Children</Text>
-        </View>
-      </View>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name, email, or mobile..."
+          placeholder="🔍 Search members by name, email, or mobile..."
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
+          autoFocus={false}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity
@@ -304,26 +304,27 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
         )}
       </View>
 
-      {/* Add Member Button - Only for admins */}
-      {canCreateMember(currentUser) && (
-        <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
-          <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Admin Management Button - Only for admins */}
-      {canApproveRegistrations(currentUser) && (
-        <TouchableOpacity style={styles.adminManagementButton} onPress={onAdminManagement}>
-          <Text style={styles.adminManagementButtonText}>⚙ Admin Management</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Results Count */}
+      {/* Results Count - only show when searching */}
       {searchQuery && (
         <Text style={styles.resultsText}>
           Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
         </Text>
       )}
+
+      {/* Action Buttons - Only for admins */}
+      <View style={styles.actionButtonsContainer}>
+        {canCreateMember(currentUser) && (
+          <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
+            <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
+          </TouchableOpacity>
+        )}
+
+        {canApproveRegistrations(currentUser) && (
+          <TouchableOpacity style={styles.adminManagementButton} onPress={onAdminManagement}>
+            <Text style={styles.adminManagementButtonText}>⚙ Admin Management</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Members List */}
       <FlatList
@@ -348,40 +349,59 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  userRoleHeader: {
+  dashboardHeader: {
+    backgroundColor: '#3498db',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'web' ? 20 : 40,
+    paddingBottom: 16,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    alignItems: 'flex-start',
   },
-  userRoleInfo: {
+  headerLeft: {
     flex: 1,
   },
-  userRoleLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 2,
+  appTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
   },
-  userRoleName: {
+  userInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  userName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    color: '#fff',
+    fontWeight: '500',
   },
   roleBadge: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   roleBadgeAdmin: {
-    backgroundColor: '#e74c3c',
+    backgroundColor: 'rgba(231, 76, 60, 0.9)',
   },
   roleBadgeUser: {
-    backgroundColor: '#3498db',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   roleBadgeText: {
     color: '#fff',
@@ -389,15 +409,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
-  logoutButton: {
-    backgroundColor: '#95a5a6',
-    paddingHorizontal: 16,
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
-  logoutButtonText: {
+  headerButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   loadingContainer: {
@@ -411,43 +437,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    ...Platform.select({
-      web: {
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      },
-    }),
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#3498db',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-  },
   searchContainer: {
     marginHorizontal: 16,
+    marginTop: 16,
     marginBottom: 12,
     position: 'relative',
   },
@@ -474,9 +466,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#999',
   },
-  addMemberButton: {
+  resultsText: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 12,
+    gap: 8,
+  },
+  addMemberButton: {
+    flex: 1,
     backgroundColor: '#27ae60',
     borderRadius: 8,
     padding: 14,
@@ -488,8 +492,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   adminManagementButton: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    flex: 1,
     backgroundColor: '#9b59b6',
     borderRadius: 8,
     padding: 14,
@@ -499,13 +502,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  resultsText: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
   },
   listContainer: {
     padding: 16,
@@ -621,22 +617,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 60,
   },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+    opacity: 0.5,
+  },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#999',
-    marginBottom: 20,
+    marginBottom: 8,
     textAlign: 'center',
+    fontWeight: '500',
   },
-  emptyButton: {
-    backgroundColor: '#27ae60',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  emptyButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  emptySubtext: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
   },
 });
 
