@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -330,69 +330,72 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
           {/* Hamburger Menu Dropdown */}
           {showMenu && (
             <View style={styles.menuDropdown}>
-              {/* Manage Record with Submenu */}
+              {/* Edit My Profile */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={async () => {
+                  setShowMenu(false);
+                  setShowManageRecordSubmenu(false);
+                  
+                  console.log('Edit My Profile - Current User:', {
+                    _id: currentUser._id,
+                    email: currentUser.email,
+                    loginType: currentUser.loginType,
+                    membersLoaded: members.length
+                  });
+                  
+                  // For admin users logged in as 'user' type, they might not have a member record
+                  if (currentUser.loginType === 'user') {
+                    Alert.alert(
+                      'Admin Account', 
+                      'You are logged in as an admin user. Admin accounts do not have member profiles. Please create a member account if you want to have a member profile.'
+                    );
+                    return;
+                  }
+                  
+                  // Try to find member record by _id first
+                  let myRecord = members.find(m => m._id === currentUser._id);
+                  
+                  // If not found in already loaded members, fetch directly from database
+                  if (!myRecord) {
+                    try {
+                      myRecord = await DatabaseService.getMember(currentUser._id);
+                    } catch (error) {
+                      console.error('Error fetching member record:', error);
+                    }
+                  }
+                  
+                  if (myRecord) {
+                    console.log('Found member record:', myRecord._id);
+                    onEditMember(myRecord);
+                  } else {
+                    Alert.alert(
+                      'Profile Not Found', 
+                      `Your profile record was not found. ID: ${currentUser._id}\nEmail: ${currentUser.email}\nPlease contact an administrator.`
+                    );
+                  }
+                }}
+              >
+                <Text style={styles.menuItemIcon}>👤</Text>
+                <Text style={styles.menuItemText}>Edit My Profile</Text>
+              </TouchableOpacity>
+              
+              {/* Manage Others with Submenu */}
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
                   setShowManageRecordSubmenu(!showManageRecordSubmenu);
                 }}
               >
-                <Text style={styles.menuItemIcon}>📋</Text>
-                <Text style={styles.menuItemText}>Manage Record</Text>
+                <Text style={styles.menuItemIcon}>👥</Text>
+                <Text style={styles.menuItemText}>Manage Others</Text>
                 <Text style={styles.menuItemArrow}>{showManageRecordSubmenu ? '▼' : '▶'}</Text>
               </TouchableOpacity>
               
-              {/* Submenu Items */}
+              {/* Submenu Items - Empty for now, can add more options later */}
               {showManageRecordSubmenu && (
                 <View style={styles.submenuContainer}>
-                  <TouchableOpacity
-                    style={styles.submenuItem}
-                    onPress={async () => {
-                      setShowMenu(false);
-                      setShowManageRecordSubmenu(false);
-                      
-                      console.log('Edit My Profile - Current User:', {
-                        _id: currentUser._id,
-                        email: currentUser.email,
-                        loginType: currentUser.loginType,
-                        membersLoaded: members.length
-                      });
-                      
-                      // For admin users logged in as 'user' type, they might not have a member record
-                      if (currentUser.loginType === 'user') {
-                        Alert.alert(
-                          'Admin Account', 
-                          'You are logged in as an admin user. Admin accounts do not have member profiles. Please create a member account if you want to have a member profile.'
-                        );
-                        return;
-                      }
-                      
-                      // Try to find member record by _id first
-                      let myRecord = members.find(m => m._id === currentUser._id);
-                      
-                      // If not found in already loaded members, fetch directly from database
-                      if (!myRecord) {
-                        try {
-                          myRecord = await DatabaseService.getMember(currentUser._id);
-                        } catch (error) {
-                          console.error('Error fetching member record:', error);
-                        }
-                      }
-                      
-                      if (myRecord) {
-                        console.log('Found member record:', myRecord._id);
-                        onEditMember(myRecord);
-                      } else {
-                        Alert.alert(
-                          'Profile Not Found', 
-                          `Your profile record was not found. ID: ${currentUser._id}\nEmail: ${currentUser.email}\nPlease contact an administrator.`
-                        );
-                      }
-                    }}
-                  >
-                    <Text style={styles.submenuItemIcon}>👤</Text>
-                    <Text style={styles.submenuItemText}>Edit My Profile</Text>
-                  </TouchableOpacity>
+                  {/* Future submenu items can go here */}
                 </View>
               )}
               
