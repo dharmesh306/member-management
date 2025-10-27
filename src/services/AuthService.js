@@ -79,10 +79,17 @@ class AuthService {
   // Login with email or mobile
   async login(identifier, password, isMember = true) {
     try {
+      console.log('=== LOGIN ATTEMPT ===');
+      console.log('Identifier:', identifier);
+      console.log('isMember flag:', isMember);
+      
       // First, check if this is a user account (like super admin)
       const db = DatabaseService.db;
+      console.log('DatabaseService.db exists:', !!db);
+      
       if (db) {
         try {
+          console.log('Searching for user account...');
           const userResult = await db.find({
             selector: {
               type: 'user',
@@ -94,9 +101,14 @@ class AuthService {
             limit: 1
           });
 
+          console.log('User search result:', userResult.docs.length, 'found');
+
           if (userResult.docs && userResult.docs.length > 0) {
             const user = userResult.docs[0];
             const hashedPassword = this.hashPassword(password);
+            
+            console.log('User found:', user.email);
+            console.log('Password match:', hashedPassword === user.passwordHash);
             
             if (hashedPassword === user.passwordHash) {
               // Create session
@@ -119,9 +131,14 @@ class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 isAdmin: user.isAdmin,
-                isSuperAdmin: user.isSuperAdmin,
                 loginType: 'user',
               };
+
+              console.log('=== USER LOGIN SUCCESSFUL ===');
+              console.log('User object returned:', JSON.stringify(this.currentUser, null, 2));
+              console.log('isAdmin:', this.currentUser.isAdmin);
+              console.log('loginType:', this.currentUser.loginType);
+              console.log('=============================');
 
               return {
                 success: true,
@@ -161,21 +178,36 @@ class AuthService {
       // Check if logging in as member or spouse
       const authData = isMember ? member.auth : member.spouse?.auth;
 
-      if (!authData || !authData.password) {
+      // Support both password structures: auth.password (new) and passwordHash (legacy/test data)
+      let storedPasswordHash = null;
+      if (authData && authData.password) {
+        storedPasswordHash = authData.password;
+      } else if (member.passwordHash) {
+        storedPasswordHash = member.passwordHash;
+      }
+
+      if (!storedPasswordHash) {
         throw new Error('Invalid credentials');
       }
 
       // Verify password
       const hashedPassword = this.hashPassword(password);
-      if (hashedPassword !== authData.password) {
+      if (hashedPassword !== storedPasswordHash) {
         throw new Error('Invalid credentials');
       }
 
       // Update last login
       if (isMember) {
-        member.auth.lastLogin = new Date().toISOString();
+        if (member.auth) {
+          member.auth.lastLogin = new Date().toISOString();
+        } else {
+          // For legacy data without auth structure, add it
+          member.lastLogin = new Date().toISOString();
+        }
       } else {
-        member.spouse.auth.lastLogin = new Date().toISOString();
+        if (member.spouse && member.spouse.auth) {
+          member.spouse.auth.lastLogin = new Date().toISOString();
+        }
       }
       await DatabaseService.updateMember(member._id, member);
 
@@ -393,7 +425,6 @@ class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 isAdmin: user.isAdmin,
-                isSuperAdmin: user.isSuperAdmin,
                 loginType: 'user',
               };
               return this.currentUser;

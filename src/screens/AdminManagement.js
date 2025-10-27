@@ -200,14 +200,28 @@ const AdminManagement = ({ currentUser, onBack }) => {
     console.log('Promote button clicked for:', member._id);
     
     const confirmed = Platform.OS === 'web' 
-      ? window.confirm(`Promote ${member.firstName} ${member.lastName} to admin?`)
+      ? window.confirm(
+          `Grant Admin Privileges?\n\n` +
+          `${member.firstName} ${member.lastName} (${member.email}) will be promoted to Admin.\n\n` +
+          `They will be able to:\n` +
+          `• View and manage all members\n` +
+          `• Approve/deny registrations\n` +
+          `• Promote other members to admin\n` +
+          `• Access Admin Management panel\n\n` +
+          `Continue?`
+        )
       : await new Promise((resolve) => {
           Alert.alert(
-            'Promote to Admin',
-            `Grant admin privileges to ${member.firstName} ${member.lastName}?`,
+            '👑 Promote to Admin',
+            `Grant admin privileges to ${member.firstName} ${member.lastName}?\n\n` +
+            `They will be able to:\n` +
+            `• View and manage all members\n` +
+            `• Approve/deny registrations\n` +
+            `• Promote other members\n` +
+            `• Access Admin Management`,
             [
               { text: 'Cancel', onPress: () => resolve(false), style: 'cancel' },
-              { text: 'Promote', onPress: () => resolve(true) }
+              { text: '✓ Promote', onPress: () => resolve(true) }
             ]
           );
         });
@@ -223,9 +237,20 @@ const AdminManagement = ({ currentUser, onBack }) => {
       console.log('Promotion successful');
       
       if (Platform.OS === 'web') {
-        window.alert(`${member.firstName} ${member.lastName} is now an admin`);
+        window.alert(
+          `✅ Admin Privileges Granted!\n\n` +
+          `${member.firstName} ${member.lastName} is now an administrator.\n\n` +
+          `They can now:\n` +
+          `• Access the Admin Management panel\n` +
+          `• Manage all members\n` +
+          `• Approve registrations\n` +
+          `• Promote other members to admin`
+        );
       } else {
-        Alert.alert('Success', `${member.firstName} ${member.lastName} is now an admin`);
+        Alert.alert(
+          '✅ Success', 
+          `${member.firstName} ${member.lastName} is now an administrator and has full admin privileges.`
+        );
       }
       
       console.log('Reloading data...');
@@ -498,7 +523,7 @@ const AdminManagement = ({ currentUser, onBack }) => {
             style={[styles.actionButton, styles.promoteButton]}
             onPress={() => handlePromoteMember(item)}
           >
-            <Text style={styles.actionButtonText}>⬆ Promote to Admin</Text>
+            <Text style={styles.actionButtonText}>👑 Grant Admin Privileges</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -509,10 +534,14 @@ const AdminManagement = ({ currentUser, onBack }) => {
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyText}>
         {activeTab === 'registrations'
-          ? 'No pending requests'
+          ? '✅ No pending registration requests'
           : activeTab === 'allAdmins' && showMemberSearch
-          ? (searchQuery ? 'No members found matching your search' : 'Search for a member to promote to admin')
-          : 'No admins found'}
+          ? (searchQuery 
+              ? '❌ No members found matching your search. Try a different name, email, or phone number.' 
+              : '👆 Click "Promote Member to Admin" above and search for a member by name, email, or phone to grant them admin privileges.')
+          : searchQuery
+          ? '❌ No admins found matching your search.'
+          : '👥 No admins in the system yet.'}
       </Text>
     </View>
   );
@@ -627,7 +656,7 @@ const AdminManagement = ({ currentUser, onBack }) => {
               }}
             >
               <Text style={[styles.toggleButtonText, !showMemberSearch && styles.activeToggleButtonText]}>
-                Search Admins
+                👥 View Current Admins
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -638,7 +667,7 @@ const AdminManagement = ({ currentUser, onBack }) => {
               }}
             >
               <Text style={[styles.toggleButtonText, showMemberSearch && styles.activeToggleButtonText]}>
-                Promote Member
+                ⬆️ Promote Member to Admin
               </Text>
             </TouchableOpacity>
           </View>
@@ -647,8 +676,10 @@ const AdminManagement = ({ currentUser, onBack }) => {
           style={styles.searchInput}
           placeholder={
             activeTab === 'allAdmins' && showMemberSearch
-              ? "Search members by name, email, or phone..."
-              : "Search by name, email, username, or phone..."
+              ? "🔍 Search for a member to promote (name, email, phone)..."
+              : activeTab === 'allAdmins'
+              ? "🔍 Search current admins (name, email, phone)..."
+              : "🔍 Search pending registrations..."
           }
           placeholderTextColor="#999"
           value={searchQuery}

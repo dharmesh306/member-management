@@ -14,9 +14,18 @@ import {
 } from 'react-native';
 import DatabaseService from '../services/DatabaseService';
 import SyncStatus from '../components/SyncStatus';
+import Statistics from './Statistics';
 import { canEditMember, canDeleteMember, canCreateMember, hasAdminPrivileges, getUserRoleDisplay, canApproveRegistrations } from '../utils/authorization';
 
 const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, currentUser }) => {
+  // Debug: Log current user and permissions
+  console.log('Dashboard loaded with user:', {
+    email: currentUser?.email,
+    loginType: currentUser?.loginType,
+    isAdmin: currentUser?.isAdmin,
+    canApproveRegistrations: canApproveRegistrations(currentUser)
+  });
+  
   const [members, setMembers] = useState([]);
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,6 +34,8 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const [showStatistics, setShowStatistics] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [showMemberDetails, setShowMemberDetails] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showManageRecordSubmenu, setShowManageRecordSubmenu] = useState(false);
 
   // Show member details modal
   const handleCardPress = (member) => {
@@ -40,11 +51,13 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
 
   // Initialize database and load members
   useEffect(() => {
+    console.log('Dashboard useEffect - initializing database and loading members');
     initializeDatabase();
   }, []);
 
   const initializeDatabase = async () => {
     try {
+      console.log('Initializing database...');
       await DatabaseService.initDatabase();
       await loadMembers();
     } catch (error) {
@@ -55,9 +68,11 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
 
   const loadMembers = async () => {
     try {
+      console.log('Loading members from database...');
       setLoading(true);
       // Use the new permission-aware method
       const data = await DatabaseService.getMembersForUser(currentUser);
+      console.log(`Loaded ${data.length} members from database`);
       setMembers(data);
       // Don't set filteredMembers here - keep it empty until search
       if (searchQuery.trim()) {
@@ -116,56 +131,6 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
     setRefreshing(true);
     await loadMembers();
   };
-
-  // Calculate statistics
-  const statistics = useMemo(() => {
-    const stats = {
-      totalMembers: members.length,
-      membersCount: members.length,
-      spousesCount: 0,
-      kidsCount: 0,
-      byState: {},
-      byCountry: {},
-    };
-
-    members.forEach(member => {
-      // Count spouses
-      if (member.spouse && member.spouse.firstName) {
-        stats.spousesCount++;
-      }
-
-      // Count children
-      if (member.children && Array.isArray(member.children)) {
-        stats.kidsCount += member.children.length;
-      }
-
-      // Count by state
-      if (member.address && member.address.state) {
-        const state = member.address.state;
-        stats.byState[state] = (stats.byState[state] || 0) + 1;
-      }
-
-      // Count by country
-      if (member.address && member.address.country) {
-        const country = member.address.country;
-        stats.byCountry[country] = (stats.byCountry[country] || 0) + 1;
-      } else if (member.address) {
-        // Default to USA if no country specified
-        stats.byCountry['USA'] = (stats.byCountry['USA'] || 0) + 1;
-      }
-    });
-
-    // Sort states and countries by count
-    stats.byStateArray = Object.entries(stats.byState)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-
-    stats.byCountryArray = Object.entries(stats.byCountry)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-
-    return stats;
-  }, [members]);
 
   const handleDelete = async (member) => {
     // Check if user has permission to delete
@@ -248,7 +213,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
           </View>
           
           <View style={styles.viewDetailsIcon}>
-            <Text style={styles.viewDetailsText}>�️</Text>
+            <Text style={styles.viewDetailsText}>👁️</Text>
             <Text style={styles.viewDetailsLabel}>View</Text>
           </View>
         </View>
@@ -287,12 +252,18 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
       {searchQuery ? (
-        <Text style={styles.emptyText}>
-          No members found matching your search
-        </Text>
-      ) : (
         <>
           <Text style={styles.emptyIcon}>🔍</Text>
+          <Text style={styles.emptyText}>
+            No members found matching your search
+          </Text>
+          <Text style={styles.emptySubtext}>
+            Try different keywords or clear your search
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.emptyIcon}>👥</Text>
           <Text style={styles.emptyText}>
             Start typing to search members
           </Text>
@@ -307,9 +278,20 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
+        <Text style={styles.loadingEmoji}>⏳</Text>
         <ActivityIndicator size="large" color="#3498db" />
         <Text style={styles.loadingText}>Loading members...</Text>
       </View>
+    );
+  }
+
+  // If statistics screen is visible, render it instead of dashboard
+  if (showStatistics) {
+    return (
+      <Statistics 
+        members={members}
+        onBack={() => setShowStatistics(false)}
+      />
     );
   }
 
@@ -320,8 +302,9 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
         <View style={styles.dashboardHeader}>
           <View style={styles.headerTop}>
             <View style={styles.headerLeft}>
-              <Text style={styles.appTitle}>Member Management</Text>
+              <Text style={styles.appTitle}>👥 Member Management</Text>
               <View style={styles.userInfoRow}>
+                <Text style={styles.userIcon}>👤</Text>
                 <Text style={styles.userName}>
                   {currentUser.firstName} {currentUser.lastName}
                 </Text>
@@ -334,28 +317,122 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
               </View>
             </View>
             <View style={styles.headerActions}>
-              {canApproveRegistrations(currentUser) && currentUser?.loginType !== 'member' && currentUser?.loginType !== 'spouse' && (
-                <TouchableOpacity
-                  style={[styles.headerButton, styles.adminManagementHeaderButton]}
-                  onPress={onAdminManagement}
-                >
-                  <Text style={styles.headerButtonText}>⚙ Admin</Text>
-                </TouchableOpacity>
-              )}
+              {/* Hamburger Menu Button */}
               <TouchableOpacity
-                style={[styles.headerButton, styles.statisticsHeaderButton]}
-                onPress={() => setShowStatistics(true)}
+                style={styles.hamburgerButton}
+                onPress={() => setShowMenu(!showMenu)}
               >
-                <Text style={styles.headerButtonText}>📊 Statistics</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerButton}
-                onPress={onLogout}
-              >
-                <Text style={styles.headerButtonText}>Logout</Text>
+                <Text style={styles.hamburgerIcon}>☰</Text>
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Hamburger Menu Dropdown */}
+          {showMenu && (
+            <View style={styles.menuDropdown}>
+              {/* Manage Record with Submenu */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowManageRecordSubmenu(!showManageRecordSubmenu);
+                }}
+              >
+                <Text style={styles.menuItemIcon}>📋</Text>
+                <Text style={styles.menuItemText}>Manage Record</Text>
+                <Text style={styles.menuItemArrow}>{showManageRecordSubmenu ? '▼' : '▶'}</Text>
+              </TouchableOpacity>
+              
+              {/* Submenu Items */}
+              {showManageRecordSubmenu && (
+                <View style={styles.submenuContainer}>
+                  <TouchableOpacity
+                    style={styles.submenuItem}
+                    onPress={async () => {
+                      setShowMenu(false);
+                      setShowManageRecordSubmenu(false);
+                      
+                      console.log('Edit My Profile - Current User:', {
+                        _id: currentUser._id,
+                        email: currentUser.email,
+                        loginType: currentUser.loginType,
+                        membersLoaded: members.length
+                      });
+                      
+                      // For admin users logged in as 'user' type, they might not have a member record
+                      if (currentUser.loginType === 'user') {
+                        Alert.alert(
+                          'Admin Account', 
+                          'You are logged in as an admin user. Admin accounts do not have member profiles. Please create a member account if you want to have a member profile.'
+                        );
+                        return;
+                      }
+                      
+                      // Try to find member record by _id first
+                      let myRecord = members.find(m => m._id === currentUser._id);
+                      
+                      // If not found in already loaded members, fetch directly from database
+                      if (!myRecord) {
+                        try {
+                          myRecord = await DatabaseService.getMember(currentUser._id);
+                        } catch (error) {
+                          console.error('Error fetching member record:', error);
+                        }
+                      }
+                      
+                      if (myRecord) {
+                        console.log('Found member record:', myRecord._id);
+                        onEditMember(myRecord);
+                      } else {
+                        Alert.alert(
+                          'Profile Not Found', 
+                          `Your profile record was not found. ID: ${currentUser._id}\nEmail: ${currentUser.email}\nPlease contact an administrator.`
+                        );
+                      }
+                    }}
+                  >
+                    <Text style={styles.submenuItemIcon}>👤</Text>
+                    <Text style={styles.submenuItemText}>Edit My Profile</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {canApproveRegistrations(currentUser) && (
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    setShowManageRecordSubmenu(false);
+                    onAdminManagement();
+                  }}
+                >
+                  <Text style={styles.menuItemIcon}>⚙️</Text>
+                  <Text style={styles.menuItemText}>Admin Management</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowManageRecordSubmenu(false);
+                  setShowStatistics(true);
+                }}
+              >
+                <Text style={styles.menuItemIcon}>📊</Text>
+                <Text style={styles.menuItemText}>Statistics</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemLogout]}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowManageRecordSubmenu(false);
+                  onLogout();
+                }}
+              >
+                <Text style={styles.menuItemIcon}>🚪</Text>
+                <Text style={styles.menuItemText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
@@ -387,10 +464,10 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
       )}
 
       {/* Action Buttons */}
-      {canCreateMember(currentUser) && currentUser?.loginType !== 'member' && currentUser?.loginType !== 'spouse' && (
+      {canCreateMember(currentUser) && (
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity style={styles.addMemberButton} onPress={onAddMember}>
-            <Text style={styles.addMemberButtonText}>+ Add New Member</Text>
+            <Text style={styles.addMemberButtonText}>➕ Add New Member</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -585,89 +662,6 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
           </View>
         </View>
       </Modal>
-
-      {/* Statistics Modal */}
-      <Modal
-        visible={showStatistics}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowStatistics(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Member Statistics</Text>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setShowStatistics(false)}
-              >
-                <Text style={styles.modalCloseButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalScroll}>
-              {/* Summary Cards */}
-              <View style={styles.statsGrid}>
-                <View style={[styles.statCard, styles.statCardPrimary]}>
-                  <Text style={styles.statValue}>{statistics.totalMembers}</Text>
-                  <Text style={styles.statLabel}>Total Members</Text>
-                </View>
-
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{statistics.membersCount}</Text>
-                  <Text style={styles.statLabel}>Members</Text>
-                </View>
-
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{statistics.spousesCount}</Text>
-                  <Text style={styles.statLabel}>Spouses</Text>
-                </View>
-
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{statistics.kidsCount}</Text>
-                  <Text style={styles.statLabel}>Children</Text>
-                </View>
-              </View>
-
-              {/* By State */}
-              {statistics.byStateArray.length > 0 && (
-                <View style={styles.statsSection}>
-                  <Text style={styles.statsSectionTitle}>📍 Members by State</Text>
-                  {statistics.byStateArray.map((item, index) => (
-                    <View key={index} style={styles.statsRow}>
-                      <Text style={styles.statsRowLabel}>{item.name}</Text>
-                      <View style={styles.statsRowRight}>
-                        <View style={styles.statsBarContainer}>
-                          <View style={[styles.statsBar, { width: `${(item.count / statistics.totalMembers) * 100}%` }]} />
-                        </View>
-                        <Text style={styles.statsRowValue}>{item.count}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* By Country */}
-              {statistics.byCountryArray.length > 0 && (
-                <View style={styles.statsSection}>
-                  <Text style={styles.statsSectionTitle}>🌍 Members by Country</Text>
-                  {statistics.byCountryArray.map((item, index) => (
-                    <View key={index} style={styles.statsRow}>
-                      <Text style={styles.statsRowLabel}>{item.name}</Text>
-                      <View style={styles.statsRowRight}>
-                        <View style={styles.statsBarContainer}>
-                          <View style={[styles.statsBar, { width: `${(item.count / statistics.totalMembers) * 100}%` }]} />
-                        </View>
-                        <Text style={styles.statsRowValue}>{item.count}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -681,17 +675,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#3498db',
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'web' ? 20 : 40,
-    paddingBottom: 16,
+    paddingBottom: 20,
     ...Platform.select({
       web: {
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        boxShadow: '0 4px 12px rgba(52, 152, 219, 0.3)',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       },
       default: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
       },
     }),
   },
@@ -704,63 +699,87 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   appTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 8,
+    marginBottom: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   userInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
   },
+  userIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
   userName: {
     fontSize: 16,
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: '600',
     marginRight: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   roleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   roleBadgeAdmin: {
-    backgroundColor: 'rgba(231, 76, 60, 0.9)',
+    backgroundColor: 'rgba(231, 76, 60, 1)',
   },
   roleBadgeUser: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(46, 204, 113, 0.9)',
   },
   roleBadgeText: {
     color: '#fff',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   headerActions: {
     flexDirection: 'row',
   },
   headerButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
     marginLeft: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   adminManagementHeaderButton: {
-    backgroundColor: 'rgba(155, 89, 182, 0.3)',
-    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(155, 89, 182, 0.4)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   statisticsHeaderButton: {
-    backgroundColor: 'rgba(52, 152, 219, 0.3)',
-    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(52, 152, 219, 0.4)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   headerButtonText: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   loadingContainer: {
     flex: 1,
@@ -768,10 +787,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
   },
+  loadingEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: '#666',
+    fontWeight: '500',
   },
   searchContainer: {
     marginHorizontal: 16,
@@ -807,7 +831,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 14,
     color: '#666',
-    fontStyle: 'italic',
+    fontWeight: '500',
   },
   actionButtonsContainer: {
     flexDirection: 'row',
@@ -817,14 +841,20 @@ const styles = StyleSheet.create({
   addMemberButton: {
     flex: 1,
     backgroundColor: '#27ae60',
-    borderRadius: 8,
-    padding: 14,
+    borderRadius: 10,
+    padding: 16,
     alignItems: 'center',
+    shadowColor: '#27ae60',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   addMemberButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   statisticsButton: {
     backgroundColor: '#3498db',
@@ -856,29 +886,32 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e8ecef',
     ...Platform.select({
       web: {
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        transition: 'all 0.3s ease',
       },
       default: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 4,
       },
     }),
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    alignItems: 'flex-start',
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#f0f4f8',
   },
   memberInfo: {
     flex: 1,
@@ -894,9 +927,11 @@ const styles = StyleSheet.create({
   },
   cardActionsRow: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingTop: 14,
+    marginTop: 14,
+    borderTopWidth: 2,
+    borderTopColor: '#f0f4f8',
+    gap: 10,
   },
   expandedContent: {
     paddingTop: 12,
@@ -905,45 +940,74 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginBottom: 4,
+    marginBottom: 8,
   },
   memberName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginRight: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginRight: 10,
+    letterSpacing: 0.3,
   },
   ownRecordBadge: {
     backgroundColor: '#27ae60',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(39, 174, 96, 0.3)',
+      },
+      default: {
+        shadowColor: '#27ae60',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
   },
   ownRecordBadgeText: {
     color: '#fff',
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   memberEmail: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 2,
+    fontSize: 15,
+    color: '#5a6c7d',
+    marginBottom: 6,
+    fontWeight: '500',
   },
   memberMobile: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: '#5a6c7d',
+    fontWeight: '500',
   },
   cardActions: {
     flexDirection: 'row',
   },
   actionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 4,
-    minWidth: 70,
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    marginLeft: 8,
+    justifyContent: 'center',
+    minHeight: 44,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
   },
   editButton: {
     backgroundColor: '#3498db',
@@ -953,8 +1017,9 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   section: {
     marginTop: 12,
@@ -986,23 +1051,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-    opacity: 0.5,
+    fontSize: 80,
+    marginBottom: 20,
   },
   emptyText: {
-    fontSize: 18,
-    color: '#999',
-    marginBottom: 8,
+    fontSize: 20,
+    color: '#555',
+    marginBottom: 10,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '700',
   },
   emptySubtext: {
-    fontSize: 14,
-    color: '#bbb',
+    fontSize: 15,
+    color: '#888',
     textAlign: 'center',
+    fontWeight: '400',
   },
   // Statistics Modal Styles
   modalOverlay: {
@@ -1049,123 +1115,47 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 24,
-    marginHorizontal: -6,
-  },
-  statCard: {
-    flex: 1,
-    minWidth: '48%',
-    backgroundColor: '#f7f9fa',
-    borderRadius: 8,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e1e8ed',
-    margin: 6,
-  },
-  statCardPrimary: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#2196f3',
-    borderWidth: 2,
-  },
-  statValue: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#657786',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  statsSection: {
-    marginTop: 24,
-    paddingTop: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#e1e8ed',
-  },
-  statsSectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f7f9fa',
-  },
-  statsRowLabel: {
-    fontSize: 14,
-    color: '#1a1a1a',
-    fontWeight: '500',
-    flex: 1,
-  },
-  statsRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 2,
-  },
-  statsBarContainer: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#e1e8ed',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginRight: 12,
-  },
-  statsBar: {
-    height: '100%',
-    backgroundColor: '#3498db',
-    borderRadius: 4,
-  },
-  statsRowValue: {
-    fontSize: 14,
-    color: '#657786',
-    fontWeight: '600',
-    minWidth: 40,
-    textAlign: 'right',
-  },
   // Member Details Modal Styles
   detailsModalContent: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    maxWidth: 700,
-    width: '90%',
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    borderRadius: 20,
+    maxWidth: 750,
+    width: '92%',
+    maxHeight: '90%',
+    overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 15,
+      },
+    }),
   },
   detailsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#3498db',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    padding: 28,
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    backgroundColor: '#667eea',
   },
   avatarContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 18,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   avatarText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
   },
@@ -1173,49 +1163,70 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   detailsName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   yourRecordBadgeLarge: {
-    backgroundColor: 'rgba(46, 204, 113, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: 'rgba(46, 204, 113, 1)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
     alignSelf: 'flex-start',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
   },
   yourRecordBadgeText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   detailsSection: {
-    padding: 20,
+    padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#e8ecef',
   },
   detailsSectionTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
     color: '#2c3e50',
-    marginBottom: 16,
+    marginBottom: 18,
+    letterSpacing: 0.5,
   },
   detailsGrid: {
-    gap: 12,
+    gap: 14,
   },
   detailsRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3498db',
   },
   detailsLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#7f8c8d',
-    width: 120,
+    color: '#5a6c7d',
+    width: 130,
   },
   detailsValue: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#2c3e50',
     flex: 1,
     fontWeight: '500',
@@ -1223,67 +1234,109 @@ const styles = StyleSheet.create({
   childCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    backgroundColor: '#e3f2fd',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#bbdefb',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(52, 152, 219, 0.1)',
+      },
+      default: {
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+      },
+    }),
   },
   childNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#3498db',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 6px rgba(52, 152, 219, 0.3)',
+      },
+      default: {
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
   },
   childNumberText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   childDetails: {
     flex: 1,
   },
   childName: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#2c3e50',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   childInfo: {
-    fontSize: 13,
-    color: '#7f8c8d',
+    fontSize: 14,
+    color: '#5a6c7d',
   },
   notesText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#2c3e50',
-    lineHeight: 22,
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 8,
+    lineHeight: 24,
+    backgroundColor: '#fff3e0',
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
   },
   // Spouse Card Styles
   spouseCard: {
     flexDirection: 'row',
-    backgroundColor: '#fff3e0',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#fce4ec',
+    padding: 18,
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#ffe0b2',
+    borderColor: '#f8bbd0',
     alignItems: 'center',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(233, 30, 99, 0.15)',
+      },
+      default: {
+        shadowColor: '#e91e63',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
   },
   spouseAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#ff9800',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#e91e63',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+    borderWidth: 3,
+    borderColor: '#f48fb1',
   },
   spouseAvatarText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
   },
@@ -1291,51 +1344,155 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   spouseName: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
     color: '#2c3e50',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   spouseDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   spouseIcon: {
-    fontSize: 14,
-    marginRight: 8,
-    width: 20,
+    fontSize: 16,
+    marginRight: 10,
+    width: 22,
   },
   spouseDetailText: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 15,
+    color: '#4a5568',
     flex: 1,
+    fontWeight: '500',
   },
   // Updated Card Styles
   quickPreview: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#e8ecef',
   },
   quickPreviewText: {
-    fontSize: 13,
-    color: '#7f8c8d',
-    marginTop: 4,
+    fontSize: 14,
+    color: '#5a6c7d',
+    marginTop: 6,
+    fontWeight: '500',
+    lineHeight: 20,
   },
   viewDetailsIcon: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingLeft: 16,
+    paddingLeft: 18,
+    backgroundColor: '#e3f2fd',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#bbdefb',
+    minWidth: 80,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(52, 152, 219, 0.15)',
+      },
+      default: {
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 2,
+      },
+    }),
   },
   viewDetailsText: {
-    fontSize: 24,
+    fontSize: 28,
     marginBottom: 4,
   },
   viewDetailsLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#3498db',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Hamburger Menu Styles
+  hamburgerButton: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  hamburgerIcon: {
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  menuDropdown: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginTop: 12,
+    marginHorizontal: 16,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
+      },
+    }),
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  menuItemLogout: {
+    borderBottomWidth: 0,
+    borderTopWidth: 2,
+    borderTopColor: '#f0f0f0',
+  },
+  menuItemIcon: {
+    fontSize: 24,
+    marginRight: 12,
+    width: 32,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#2c3e50',
     fontWeight: '600',
+    flex: 1,
+  },
+  menuItemArrow: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    marginLeft: 8,
+  },
+  submenuContainer: {
+    backgroundColor: '#f8f9fa',
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db',
+  },
+  submenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    paddingLeft: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  submenuItemIcon: {
+    fontSize: 20,
+    marginRight: 12,
+    width: 28,
+  },
+  submenuItemText: {
+    fontSize: 15,
+    color: '#495057',
+    fontWeight: '500',
   },
 });
 

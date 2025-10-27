@@ -17,6 +17,7 @@ const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPasswor
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     setError('');
@@ -110,15 +111,24 @@ const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPasswor
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            placeholderTextColor="#999"
-            secureTextEntry
-            editable={!loading}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
+              placeholderTextColor="#999"
+              secureTextEntry={!showPassword}
+              editable={!loading}
+            />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(!showPassword)}
+              disabled={loading}
+            >
+              <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Forgot Password Link */}
@@ -195,157 +205,229 @@ const Login = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPasswor
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#f5f5f5',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    backgroundColor: '#667eea',
     justifyContent: 'center',
     padding: 16,
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
+    borderRadius: 24,
+    padding: 32,
     maxWidth: 500,
     width: '100%',
     alignSelf: 'center',
     ...Platform.select({
       web: {
-        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(102,126,234,0.1)',
       },
       default: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 12,
       },
     }),
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#2c3e50',
     marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: '#7f8c8d',
+    fontWeight: '500',
   },
   errorContainer: {
-    backgroundColor: '#fee',
-    borderRadius: 6,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: '#fff5f5',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
     borderLeftWidth: 4,
     borderLeftColor: '#e74c3c',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(231,76,60,0.1)',
+      },
+    }),
   },
   errorText: {
-    color: '#e74c3c',
-    fontSize: 14,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
+    color: '#c0392b',
     fontSize: 14,
     fontWeight: '600',
-    color: '#555',
-    marginBottom: 8,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#fafafa',
     color: '#333',
+  },
+  passwordContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 14,
+    paddingRight: 50,
+    fontSize: 16,
+    backgroundColor: '#fafafa',
+    color: '#333',
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 12,
+    padding: 8,
+  },
+  eyeIcon: {
+    fontSize: 22,
   },
   forgotPasswordContainer: {
     alignItems: 'flex-end',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   forgotPasswordText: {
-    color: '#3498db',
+    color: '#667eea',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   loginButton: {
-    backgroundColor: '#3498db',
-    borderRadius: 8,
-    paddingVertical: 16,
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    backgroundColor: '#667eea',
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
+      },
+      ios: {
+        shadowColor: '#667eea',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   loginButtonDisabled: {
     backgroundColor: '#95a5a6',
+    background: 'none',
   },
   loginButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 24,
   },
   dividerLine: {
     flex: 1,
-    height: 1,
-    backgroundColor: '#ddd',
+    height: 2,
+    backgroundColor: '#e0e0e0',
   },
   dividerText: {
-    marginHorizontal: 12,
-    fontSize: 12,
-    color: '#999',
-    fontWeight: '600',
+    marginHorizontal: 16,
+    fontSize: 13,
+    color: '#7f8c8d',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   oauthContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   oauthButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
     backgroundColor: '#fff',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   googleButton: {
     borderColor: '#4285F4',
+    backgroundColor: '#f8fbff',
   },
   facebookButton: {
     borderColor: '#1877F2',
+    backgroundColor: '#f7faff',
   },
   microsoftButton: {
     borderColor: '#00A4EF',
+    backgroundColor: '#f7fcff',
   },
   oauthButtonText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginLeft: 8,
   },
   registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 12,
   },
   registerText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: '#7f8c8d',
+    fontWeight: '500',
   },
   registerLink: {
-    fontSize: 14,
-    color: '#3498db',
-    fontWeight: '600',
+    fontSize: 15,
+    color: '#667eea',
+    fontWeight: '700',
+    marginLeft: 4,
   },
 });
 

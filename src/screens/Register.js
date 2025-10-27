@@ -18,6 +18,8 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [memberData, setMemberData] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleMemberFormSubmit = async (data) => {
     // Validate password fields
@@ -39,26 +41,42 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
         // Clear form
         setPassword('');
         setConfirmPassword('');
+        setLoading(false);
         
         // Show success message and navigate to login
-        Alert.alert(
-          'Registration Successful! 🎉',
-          'Your account has been created and is currently in pending status.\n\n' +
-          '✓ Your registration will be reviewed by an admin\n' +
-          '✓ Approval typically takes up to 24 hours\n' +
-          '✓ You will receive an email or SMS notification when your account is approved\n\n' +
-          'Once approved, you can login with your credentials.',
-          [
-            { 
-              text: 'Go to Login', 
-              onPress: () => {
-                setLoading(false);
-                onNavigateToLogin();
+        if (Platform.OS === 'web') {
+          // For web, show alert and navigate immediately after user clicks OK
+          const userConfirmed = window.confirm(
+            'Registration Successful! 🎉\n\n' +
+            'Your account has been created and is currently in pending status.\n\n' +
+            '✓ Your registration will be reviewed by an admin\n' +
+            '✓ Approval typically takes up to 24 hours\n' +
+            '✓ You will receive an email or SMS notification when your account is approved\n\n' +
+            'Once approved, you can login with your credentials.\n\n' +
+            'Click OK to go to the login page.'
+          );
+          // Navigate regardless of confirmation
+          onNavigateToLogin();
+        } else {
+          // For mobile, use Alert
+          Alert.alert(
+            'Registration Successful! 🎉',
+            'Your account has been created and is currently in pending status.\n\n' +
+            '✓ Your registration will be reviewed by an admin\n' +
+            '✓ Approval typically takes up to 24 hours\n' +
+            '✓ You will receive an email or SMS notification when your account is approved\n\n' +
+            'Once approved, you can login with your credentials.',
+            [
+              { 
+                text: 'Go to Login', 
+                onPress: () => {
+                  onNavigateToLogin();
+                }
               }
-            }
-          ],
-          { cancelable: false }
-        );
+            ],
+            { cancelable: false }
+          );
+        }
       } else {
         Alert.alert('Error', result.error || 'Registration failed');
         setLoading(false);
@@ -93,28 +111,46 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
               
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Password *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Enter password (min. 6 characters)"
-                  placeholderTextColor="#999"
-                  secureTextEntry
-                  editable={!loading}
-                />
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter password (min. 6 characters)"
+                    placeholderTextColor="#999"
+                    secureTextEntry={!showPassword}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}
+                    disabled={loading}
+                  >
+                    <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Confirm Password *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Confirm password"
-                  placeholderTextColor="#999"
-                  secureTextEntry
-                  editable={!loading}
-                />
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Confirm password"
+                    placeholderTextColor="#999"
+                    secureTextEntry={!showConfirmPassword}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={loading}
+                  >
+                    <Text style={styles.eyeIcon}>{showConfirmPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
@@ -210,6 +246,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#fff',
     color: '#333',
+  },
+  passwordContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 14,
+    paddingRight: 50,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#333',
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 12,
+    padding: 8,
+  },
+  eyeIcon: {
+    fontSize: 20,
   },
   loginLinkContainer: {
     flexDirection: 'row',

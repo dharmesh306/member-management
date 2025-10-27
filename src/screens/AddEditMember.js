@@ -60,7 +60,11 @@ const AddEditMember = ({ route, navigation }) => {
 
       // Double-check permissions before saving
       if (member?._id) {
-        if (!canEditMember(currentUser, member._id)) {
+        // Allow if user is admin OR if user is editing their own profile
+        const isAdmin = currentUser?.isAdmin === true;
+        const isOwnProfile = currentUser?._id === member._id;
+        
+        if (!isAdmin && !isOwnProfile) {
           Alert.alert('Permission Denied', 'You do not have permission to edit this member.');
           setLoading(false);
           return;
@@ -101,18 +105,41 @@ const AddEditMember = ({ route, navigation }) => {
 
       if (member?._id) {
         // Update existing member - pass currentUser for permission check
+        console.log('Updating member:', {
+          memberId: member._id,
+          currentUserId: currentUser?._id,
+          isAdmin: currentUser?.isAdmin
+        });
+        
         await DatabaseService.updateMember(member._id, memberData, currentUser);
-        Alert.alert('Success', 'Member updated successfully', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        
+        console.log('Member updated successfully');
+        
+        // Platform-specific success handling
+        if (Platform.OS === 'web') {
+          window.confirm('Member updated successfully');
+          navigation.goBack();
+        } else {
+          Alert.alert('Success', 'Member updated successfully', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        }
       } else {
         // Create new member
         await DatabaseService.createMember(memberData);
-        Alert.alert('Success', 'Member created successfully', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        
+        // Platform-specific success handling
+        if (Platform.OS === 'web') {
+          window.confirm('Member created successfully');
+          navigation.goBack();
+        } else {
+          Alert.alert('Success', 'Member created successfully', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        }
       }
     } catch (error) {
+      console.error('Submit error:', error);
       Alert.alert('Error', `Failed to ${member?._id ? 'update' : 'create'} member: ${error.message}`);
       console.error(error);
     } finally {

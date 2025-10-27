@@ -25,6 +25,7 @@ const App = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [resetToken, setResetToken] = useState(null);
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
   // Check for existing session on app load
   useEffect(() => {
@@ -71,6 +72,8 @@ const App = () => {
 
   const handleBack = () => {
     setSelectedMember(null);
+    // Increment refresh key to force Dashboard to reload data
+    setDashboardRefreshKey(prev => prev + 1);
     setCurrentScreen('dashboard');
   };
 
@@ -139,6 +142,7 @@ const App = () => {
       case 'dashboard':
         return (
           <Dashboard
+            key={dashboardRefreshKey}
             onAddMember={handleAddMember}
             onEditMember={handleEditMember}
             onLogout={handleLogout}

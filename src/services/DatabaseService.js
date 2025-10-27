@@ -171,8 +171,16 @@ class DatabaseService {
 
       // Check permissions if currentUser is provided
       if (currentUser) {
-        const isAdmin = currentUser.isAdmin || currentUser.isSuperAdmin;
+        const isAdmin = currentUser.isAdmin === true;
         const isOwner = currentUser._id === id;
+
+        console.log('UpdateMember Permission Check:', {
+          userId: currentUser._id,
+          targetId: id,
+          isAdmin,
+          isOwner,
+          canUpdate: isAdmin || isOwner
+        });
 
         // Only admins or the member themselves can update
         if (!isAdmin && !isOwner) {
@@ -180,14 +188,39 @@ class DatabaseService {
         }
       }
       
+      // Get the latest version of the document from the database
       const doc = await this.db.get(id);
+      
+      console.log('Current doc from DB:', {
+        _id: doc._id,
+        _rev: doc._rev,
+        email: doc.email
+      });
+      
+      // Create a copy of memberData without _id and _rev to avoid conflicts
+      const { _id, _rev, ...cleanMemberData } = memberData;
+      
+      console.log('Clean member data keys:', Object.keys(cleanMemberData));
+      
+      // Merge the clean member data with the existing doc, preserving _id and _rev
       const updatedDoc = {
         ...doc,
-        ...memberData,
+        ...cleanMemberData,
+        _id: doc._id,      // Preserve original _id
+        _rev: doc._rev,    // Preserve latest _rev from database
         updatedAt: new Date().toISOString(),
       };
 
+      console.log('Attempting to save updated doc:', {
+        _id: updatedDoc._id,
+        _rev: updatedDoc._rev,
+        email: updatedDoc.email
+      });
+
       const response = await this.db.put(updatedDoc);
+      
+      console.log('Update successful, new rev:', response.rev);
+      
       return { ...updatedDoc, _rev: response.rev };
     } catch (error) {
       console.error('Error updating member:', error);
@@ -205,7 +238,7 @@ class DatabaseService {
 
       // Check permissions if currentUser is provided
       if (currentUser) {
-        const isAdmin = currentUser.isAdmin || currentUser.isSuperAdmin;
+        const isAdmin = currentUser.isAdmin === true;
 
         // Only admins can delete members
         if (!isAdmin) {
@@ -214,11 +247,6 @@ class DatabaseService {
       }
       
       const doc = await this.db.get(id);
-      
-      // Check if this is a protected account (super admin)
-      if (doc.cannotBeDeleted || doc.isSuperAdmin) {
-        throw new Error('This account is protected and cannot be deleted');
-      }
       
       const response = await this.db.remove(doc);
       return response;
@@ -278,10 +306,9 @@ class DatabaseService {
         this.initDatabase();
       }
       
-      // Use remote DB if available for consistency
-      const queryDB = this.remoteDB || this.db;
-      const dbType = this.remoteDB ? 'remote' : 'local';
-      console.log(`Getting all members from ${dbType} database...`);
+      // Always query local DB for most up-to-date data
+      const queryDB = this.db;
+      console.log(`Getting all members from local database...`);
       
       const result = await queryDB.allDocs({
         include_docs: true,
@@ -289,8 +316,20 @@ class DatabaseService {
         endkey: 'member_\ufff0',
       });
 
-      console.log(`Found ${result.rows.length} total members in ${dbType} DB`);
-      return result.rows.map(row => row.doc);
+      console.log(`Found ${result.rows.length} total members in local DB`);
+      const members = result.rows.map(row => row.doc);
+      
+      // Log a sample member to verify data freshness
+      if (members.length > 0) {
+        console.log('Sample member data:', {
+          _id: members[0]._id,
+          _rev: members[0]._rev,
+          email: members[0].email,
+          firstName: members[0].firstName
+        });
+      }
+      
+      return members;
     } catch (error) {
       console.error('Error getting all members:', error);
       throw error;
@@ -307,24 +346,19 @@ class DatabaseService {
 
       const allMembers = await this.getAllMembers();
 
-      // If user is admin or super admin, return all members
-      if (currentUser && (
-        currentUser.role === 'admin' || 
-        currentUser.role === 'superadmin' ||
-        currentUser.isAdmin || 
-        currentUser.isSuperAdmin
-      )) {
+      // If user is admin, return all members
+      if (currentUser && (currentUser.role === 'admin' || currentUser.isAdmin)) {
         console.log('Admin user - returning all members:', allMembers.length);
         return allMembers;
       }
 
-      // If user is a regular member/spouse, return all members (they can view all, but edit only their own)
-      if (currentUser && (currentUser.loginType === 'member' || currentUser.loginType === 'spouse')) {
+      // Regular users can view all members (directory viewing)
+      if (currentUser) {
         console.log('Regular user - returning all members for viewing:', allMembers.length);
         return allMembers;
       }
 
-      // No user or invalid user, return empty array
+      // No user, return empty array
       console.log('No valid user - returning empty array');
       return [];
     } catch (error) {
@@ -653,7 +687,8 @@ class DatabaseService {
 
       const user = await updateDB.get(userId);
 
-      user.role = 'admin'; // Update to use 'role' field
+      user.isAdmin = true; // Set admin flag
+      user.role = 'admin'; // Also set role for compatibility
       user.adminRequested = false;
       user.promotedToAdminAt = new Date().toISOString();
       user.promotedBy = promotedBy;
@@ -681,11 +716,6 @@ class DatabaseService {
       console.log(`Demoting admin to member in ${dbType} database...`);
 
       const user = await updateDB.get(userId);
-
-      // Remove admin privileges (but not superadmin)
-      if (user.isSuperAdmin || user.role === 'superadmin') {
-        throw new Error('Cannot demote super admin');
-      }
 
       // Clear admin-related fields
       delete user.role;
@@ -743,7 +773,7 @@ class DatabaseService {
       const user = await this.db.get(userId);
 
       // Check if already admin
-      if (user.isAdmin || user.isSuperAdmin) {
+      if (user.isAdmin) {
         throw new Error('User already has admin privileges');
       }
 

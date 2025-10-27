@@ -9,30 +9,70 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { createEmptyChild, validateMember } from '../models/MemberModel';
 import DatabaseService from '../services/DatabaseService';
 
+// USA States
+const USA_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+  'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
+  'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
+  'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+  'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia',
+  'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
+];
+
+// Canadian Provinces and Territories
+const CANADA_PROVINCES = [
+  'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
+  'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island',
+  'Quebec', 'Saskatchewan', 'Yukon'
+];
+
 const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
-  const [member, setMember] = useState(initialData || {
-    firstName: '',
-    lastName: '',
-    email: '',
-    mobile: '',
-    spouse: {
+  const [member, setMember] = useState(() => {
+    const defaultMember = {
       firstName: '',
       lastName: '',
       email: '',
       mobile: '',
-    },
-    address: {
-      street: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      country: '',
-    },
-    children: [],
+      spouse: {
+        firstName: '',
+        lastName: '',
+        email: '',
+        mobile: '',
+      },
+      address: {
+        street: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        country: '',
+      },
+      children: [],
+    };
+    
+    // If initialData exists, merge it with defaults while preserving _id, _rev, type, etc.
+    if (initialData) {
+      return {
+        ...defaultMember,
+        ...initialData,
+        spouse: {
+          ...defaultMember.spouse,
+          ...(initialData.spouse || {}),
+        },
+        address: {
+          ...defaultMember.address,
+          ...(initialData.address || {}),
+        },
+        children: initialData.children || [],
+      };
+    }
+    
+    return defaultMember;
   });
 
   const [errors, setErrors] = useState({});
@@ -43,6 +83,8 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
   const [checkingMobile, setCheckingMobile] = useState(false);
   const [checkingSpouseEmail, setCheckingSpouseEmail] = useState(false);
   const [checkingSpouseMobile, setCheckingSpouseMobile] = useState(false);
+  const [showStateDropdown, setShowStateDropdown] = useState(false);
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   // Debounce timer refs
   const emailTimeoutRef = React.useRef(null);
@@ -356,6 +398,16 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
       return;
     }
 
+    console.log('MemberForm submitting data:', {
+      _id: member._id,
+      _rev: member._rev,
+      type: member.type,
+      email: member.email,
+      firstName: member.firstName,
+      hasSpouse: !!member.spouse?.firstName,
+      childrenCount: member.children?.length || 0
+    });
+
     onSubmit(member);
   };
 
@@ -573,14 +625,26 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>State *</Text>
-            <TextInput
-              style={[styles.input, errors.address?.state && styles.inputError]}
-              value={member.address.state}
-              onChangeText={(value) => handleAddressChange('state', value)}
-              placeholder="Enter state"
-              placeholderTextColor="#999"
-            />
+            <Text style={styles.label}>State/Province *</Text>
+            {(member.address.country === 'USA' || member.address.country === 'Canada') ? (
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownButton, errors.address?.state && styles.inputError]}
+                onPress={() => setShowStateDropdown(true)}
+              >
+                <Text style={member.address.state ? styles.dropdownText : styles.dropdownPlaceholder}>
+                  {member.address.state || `Select ${member.address.country === 'USA' ? 'state' : 'province'}`}
+                </Text>
+                <Text style={styles.dropdownArrow}>▼</Text>
+              </TouchableOpacity>
+            ) : (
+              <TextInput
+                style={[styles.input, errors.address?.state && styles.inputError]}
+                value={member.address.state}
+                onChangeText={(value) => handleAddressChange('state', value)}
+                placeholder="Enter state/province"
+                placeholderTextColor="#999"
+              />
+            )}
             {errors.address?.state && (
               <Text style={styles.errorText}>{errors.address.state}</Text>
             )}
@@ -603,14 +667,19 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Country</Text>
-            <TextInput
-              style={styles.input}
-              value={member.address.country}
-              onChangeText={(value) => handleAddressChange('country', value)}
-              placeholder="Enter country"
-              placeholderTextColor="#999"
-            />
+            <Text style={styles.label}>Country *</Text>
+            <TouchableOpacity
+              style={[styles.input, styles.dropdownButton]}
+              onPress={() => setShowCountryDropdown(true)}
+            >
+              <Text style={member.address.country ? styles.dropdownText : styles.dropdownPlaceholder}>
+                {member.address.country || 'Select country'}
+              </Text>
+              <Text style={styles.dropdownArrow}>▼</Text>
+            </TouchableOpacity>
+            {errors.address?.country && (
+              <Text style={styles.errorText}>{errors.address.country}</Text>
+            )}
           </View>
         </View>
       </View>
@@ -727,6 +796,108 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Country Dropdown Modal */}
+      <Modal
+        visible={showCountryDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCountryDropdown(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCountryDropdown(false)}
+        >
+          <View style={styles.dropdownModal}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownTitle}>Select Country</Text>
+              <TouchableOpacity onPress={() => setShowCountryDropdown(false)}>
+                <Text style={styles.dropdownClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.dropdownList}>
+              {['USA', 'Canada'].map((country) => (
+                <TouchableOpacity
+                  key={country}
+                  style={[
+                    styles.dropdownItem,
+                    member.address.country === country && styles.dropdownItemSelected
+                  ]}
+                  onPress={() => {
+                    handleAddressChange('country', country);
+                    // Reset state when country changes
+                    if (member.address.country !== country) {
+                      handleAddressChange('state', '');
+                    }
+                    setShowCountryDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownItemText,
+                    member.address.country === country && styles.dropdownItemTextSelected
+                  ]}>
+                    {country}
+                  </Text>
+                  {member.address.country === country && (
+                    <Text style={styles.dropdownCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* State/Province Dropdown Modal */}
+      <Modal
+        visible={showStateDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStateDropdown(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowStateDropdown(false)}
+        >
+          <View style={styles.dropdownModal}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownTitle}>
+                Select {member.address.country === 'USA' ? 'State' : 'Province'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowStateDropdown(false)}>
+                <Text style={styles.dropdownClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.dropdownList}>
+              {(member.address.country === 'USA' ? USA_STATES : CANADA_PROVINCES).map((state) => (
+                <TouchableOpacity
+                  key={state}
+                  style={[
+                    styles.dropdownItem,
+                    member.address.state === state && styles.dropdownItemSelected
+                  ]}
+                  onPress={() => {
+                    handleAddressChange('state', state);
+                    setShowStateDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownItemText,
+                    member.address.state === state && styles.dropdownItemTextSelected
+                  ]}>
+                    {state}
+                  </Text>
+                  {member.address.state === state && (
+                    <Text style={styles.dropdownCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 };
@@ -892,6 +1063,93 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 12,
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dropdownPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+  },
+  dropdownArrow: {
+    fontSize: 12,
+    color: '#666',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '85%',
+    maxHeight: '70%',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+      },
+    }),
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  dropdownTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  dropdownClose: {
+    fontSize: 24,
+    color: '#666',
+    padding: 4,
+  },
+  dropdownList: {
+    maxHeight: 400,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#e3f2fd',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dropdownItemTextSelected: {
+    color: '#3498db',
+    fontWeight: '600',
+  },
+  dropdownCheck: {
+    fontSize: 20,
+    color: '#3498db',
+    fontWeight: 'bold',
   },
 });
 
