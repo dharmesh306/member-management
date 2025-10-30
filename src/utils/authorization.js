@@ -4,8 +4,20 @@
  * Check if user is an admin
  */
 export const isAdmin = (user) => {
-  if (!user) return false;
-  return user.isAdmin === true || user.role === 'admin';
+  if (!user) {
+    console.log('isAdmin check failed: No user provided');
+    return false;
+  }
+  
+  const adminStatus = user.isAdmin === true || user.role === 'admin';
+  console.log('Admin status check:', {
+    userId: user._id,
+    isAdmin: user.isAdmin,
+    role: user.role,
+    result: adminStatus
+  });
+  
+  return adminStatus;
 };
 
 /**
@@ -14,7 +26,14 @@ export const isAdmin = (user) => {
  * - Regular users can view all records (directory viewing)
  */
 export const canViewMember = (user, memberId) => {
-  if (!user) return false;
+  if (!user) {
+    console.log('View permission denied: No user provided');
+    return false;
+  }
+  console.log('View permission granted for:', {
+    userId: user._id,
+    targetMemberId: memberId
+  });
   // Everyone can view the member directory
   return true;
 };
@@ -26,10 +45,21 @@ export const canViewMember = (user, memberId) => {
  * - Regular users can only edit their own profile through "Edit My Profile" menu
  */
 export const canEditMember = (user, memberId) => {
-  if (!user) return false;
+  if (!user) {
+    console.log('Edit permission denied: No user provided');
+    return false;
+  }
   
-  // Only admins can edit records in the directory view
-  return isAdmin(user);
+  const hasPermission = isAdmin(user);
+  console.log('Edit permission check:', {
+    userId: user._id,
+    targetMemberId: memberId,
+    isAdmin: user.isAdmin,
+    role: user.role,
+    hasPermission
+  });
+  
+  return hasPermission;
 };
 
 /**
@@ -38,10 +68,44 @@ export const canEditMember = (user, memberId) => {
  * - Regular users cannot delete any records (including their own)
  */
 export const canDeleteMember = (user, memberId) => {
-  if (!user) return false;
-  
-  // Only admins can delete records
-  return isAdmin(user);
+  if (!user) {
+    console.log('Delete permission denied: No user provided');
+    return false;
+  }
+
+  // Log detailed user info
+  console.log('Delete permission check - User details:', {
+    userId: user._id,
+    email: user.email,
+    isAdmin: user.isAdmin,
+    role: user.role,
+    loginType: user.loginType
+  });
+
+  // Check admin status
+  const adminStatus = isAdmin(user);
+  console.log('Delete permission check - Admin status:', {
+    userId: user._id,
+    isAdmin: adminStatus,
+    targetMemberId: memberId
+  });
+
+  // Additional validation checks
+  if (!adminStatus) {
+    console.log('Delete permission denied: User is not an admin');
+    return false;
+  }
+
+  if (!memberId) {
+    console.log('Delete permission warning: No target member ID provided');
+  }
+
+  if (memberId === user._id) {
+    console.log('Delete permission warning: User attempting to delete their own record');
+  }
+
+  console.log('Delete permission granted for admin user');
+  return true;
 };
 
 /**

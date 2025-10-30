@@ -133,8 +133,35 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   };
 
   const handleDelete = async (member) => {
+    console.log('Handling delete request for member:', {
+      memberId: member._id,
+      memberName: `${member.firstName} ${member.lastName}`,
+      currentUser: {
+        id: currentUser?._id,
+        isAdmin: currentUser?.isAdmin,
+        role: currentUser?.role
+      },
+      memberDetails: {
+        type: member.type,
+        status: member.status,
+        email: member.email
+      }
+    });
+
+    // Check if currentUser exists
+    if (!currentUser) {
+      console.log('No current user found');
+      Alert.alert('Authentication Required', 'Please log in to perform this action.');
+      return;
+    }
+
     // Check if user has permission to delete
     if (!canDeleteMember(currentUser, member._id)) {
+      console.log('Delete permission denied:', {
+        userId: currentUser._id,
+        isAdmin: currentUser.isAdmin,
+        userRole: currentUser.role
+      });
       Alert.alert('Permission Denied', 'You do not have permission to delete members. Only admins can delete records.');
       return;
     }
@@ -143,25 +170,107 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
       return new Promise((resolve) => {
         Alert.alert(
           'Delete Member',
-          `Are you sure you want to delete ${member.firstName} ${member.lastName}?`,
+          `Are you sure you want to delete ${member.firstName} ${member.lastName}? This action cannot be undone.`,
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            { 
+              text: 'Cancel', 
+              style: 'cancel',
+              onPress: () => {
+                console.log('Delete cancelled by user');
+                resolve(false);
+              }
+            },
+            { 
+              text: 'Delete', 
+              style: 'destructive',
+              onPress: () => {
+                console.log('Delete confirmed by user');
+                resolve(true);
+              }
+            },
           ]
         );
       });
     };
 
-    const confirmed = await confirmDelete();
-    if (confirmed) {
-      try {
-        await DatabaseService.deleteMember(member._id, currentUser);
-        await loadMembers();
-        Alert.alert('Success', 'Member deleted successfully');
-      } catch (error) {
-        Alert.alert('Error', error.message || 'Failed to delete member');
-        console.error(error);
+    try {
+      const confirmed = await confirmDelete();
+      if (confirmed) {
+        console.log('Delete confirmed, proceeding with deletion:', {
+          memberId: member._id,
+          memberEmail: member.email
+        });
+        
+        // Close member details modal if it's open
+        if (showMemberDetails && selectedMember?._id === member._id) {
+          console.log('Closing member details modal');
+          setShowMemberDetails(false);
+          setSelectedMember(null);
+        }
+
+        // Show loading state
+        setLoading(true);
+
+        try {
+          // Attempt to delete the member
+          const deleteResult = await DatabaseService.deleteMember(member._id, currentUser);
+          console.log('Delete operation result:', deleteResult);
+
+          // Wait a moment for sync to complete
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // Refresh the members list
+          await loadMembers();
+          console.log('Member list refreshed');
+
+          // Double check the member was actually deleted
+          try {
+            await DatabaseService.getMember(member._id);
+            console.error('Member still exists after deletion');
+            throw new Error('Failed to delete member - document still exists');
+          } catch (checkError) {
+            if (checkError.name === 'not_found') {
+              console.log('Confirmed member was deleted successfully');
+            } else {
+              throw checkError;
+            }
+          }
+
+          // Update filtered results if search is active
+          if (searchQuery) {
+            console.log('Updating search results');
+            const updatedMembers = members.filter(m => m._id !== member._id);
+            handleSearch(searchQuery, updatedMembers);
+          }
+
+          Alert.alert(
+            'Success',
+            `${member.firstName} ${member.lastName} has been deleted successfully`
+          );
+        } catch (deleteError) {
+          console.error('Delete operation failed:', {
+            error: deleteError,
+            errorMessage: deleteError.message,
+            errorStack: deleteError.stack
+          });
+          throw deleteError;
+        }
+      } else {
+        console.log('Delete cancelled by user');
       }
+    } catch (error) {
+      console.error('Error during member deletion:', {
+        error: error,
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
+      
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to delete member. Please try again or contact support.'
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -392,10 +501,34 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
                 <Text style={styles.menuItemArrow}>{showManageRecordSubmenu ? '▼' : '▶'}</Text>
               </TouchableOpacity>
               
-              {/* Submenu Items - Empty for now, can add more options later */}
+              {/* Managed Members Submenu */}
               {showManageRecordSubmenu && (
                 <View style={styles.submenuContainer}>
-                  {/* Future submenu items can go here */}
+                  {/* Add New Managed Member */}
+                  <TouchableOpacity
+                    style={styles.submenuItem}
+                    onPress={() => {
+                      setShowMenu(false);
+                      setShowManageRecordSubmenu(false);
+                      onAddMember(true); // Pass true to indicate this is a managed member
+                    }}
+                  >
+                    <Text style={styles.submenuItemIcon}>➕</Text>
+                    <Text style={styles.submenuItemText}>Add Family Member</Text>
+                  </TouchableOpacity>
+
+                  {/* View Managed Members */}
+                  <TouchableOpacity
+                    style={styles.submenuItem}
+                    onPress={() => {
+                      setShowMenu(false);
+                      setShowManageRecordSubmenu(false);
+                      setSearchQuery('managedBy:' + currentUser._id);
+                    }}
+                  >
+                    <Text style={styles.submenuItemIcon}>👥</Text>
+                    <Text style={styles.submenuItemText}>View Family Members</Text>
+                  </TouchableOpacity>
                 </View>
               )}
               
@@ -526,6 +659,47 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
                       <Text style={styles.modalCloseButtonText}>✕</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {/* Management Status */}
+                  {(selectedMember.managedBy || selectedMember._id === currentUser._id) && (
+                    <View style={styles.detailsSection}>
+                      <Text style={styles.detailsSectionTitle}>
+                        {selectedMember.managedBy ? '👥 Managed Member' : '🔑 Account Status'}
+                      </Text>
+                      <View style={styles.detailsGrid}>
+                        {selectedMember.managedBy && (
+                          <>
+                            <View style={styles.detailsRow}>
+                              <Text style={styles.detailsLabel}>Managed By:</Text>
+                              <Text style={styles.detailsValue}>
+                                {currentUser._id === selectedMember.managedBy ? 'You' : 'Another Member'}
+                              </Text>
+                            </View>
+                            <View style={styles.detailsRow}>
+                              <Text style={styles.detailsLabel}>Since:</Text>
+                              <Text style={styles.detailsValue}>
+                                {new Date(selectedMember.managedSince).toLocaleDateString()}
+                              </Text>
+                            </View>
+                            <View style={styles.detailsRow}>
+                              <Text style={styles.detailsLabel}>Login Access:</Text>
+                              <Text style={styles.detailsValue}>
+                                Managed through parent account
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                        {selectedMember._id === currentUser._id && (
+                          <View style={styles.detailsRow}>
+                            <Text style={styles.detailsLabel}>Account Type:</Text>
+                            <Text style={styles.detailsValue}>
+                              Primary Account (Has Login)
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
 
                   {/* Contact Information */}
                   <View style={styles.detailsSection}>

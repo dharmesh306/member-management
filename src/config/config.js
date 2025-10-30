@@ -1,14 +1,19 @@
-// CouchDB Configuration
-// Update these settings to match your CouchDB server
+// Load environment variables if needed
+const getEnvVar = (key, defaultValue = '') => {
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key] || defaultValue;
+  }
+  return defaultValue;
+};
 
 const config = {
   couchdb: {
-    // Remote CouchDB server URL
-    url: 'http://astworkbench03:5984/member_management',
+    // Remote CouchDB server URL with database name
+    url: `${getEnvVar('REACT_APP_COUCHDB_URL', 'http://localhost:5984')}/${getEnvVar('REACT_APP_COUCHDB_DATABASE', 'member_management')}`,
     
     // Authentication credentials
-    username: 'admin',
-    password: 'password',
+    username: getEnvVar('REACT_APP_COUCHDB_USERNAME', 'admin'),
+    password: getEnvVar('REACT_APP_COUCHDB_PASSWORD', 'password'),
     
     // Sync options
     syncOptions: {
@@ -19,13 +24,13 @@ const config = {
     },
     
     // Local database name
-    localDbName: 'member_management',
+    localDbName: getEnvVar('COUCHDB_DATABASE', 'member_management'),
   },
   
   // App settings
   app: {
     searchDebounceMs: 300,      // Search debounce delay
-    enableAutoSync: true,        // Enable automatic sync on init
+    enableAutoSync: getEnvVar('REACT_APP_ENABLE_AUTO_SYNC', 'true') === 'true',
   },
 };
 

@@ -8,7 +8,7 @@ const PouchDBFind = require('pouchdb-find');
 PouchDB.plugin(PouchDBFind);
 
 const config = {
-  remoteDB: 'http://admin:password@astworkbench03:5984/member_management',
+  remoteDB: 'http://admin:password@localhost:5984/member_management',
 };
 
 const db = new PouchDB(config.remoteDB);

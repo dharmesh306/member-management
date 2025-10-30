@@ -5,6 +5,10 @@ export const createEmptyMember = () => ({
   lastName: '',
   email: '',
   mobile: '',
+  isManaged: false,
+  managerId: '',
+  managerName: '',
+  managedMembers: [],
   spouse: {
     firstName: '',
     lastName: '',
@@ -58,6 +62,11 @@ export const validateMember = (member) => {
     errors.mobile = 'Mobile number is required';
   } else if (!validateMobile(member.mobile)) {
     errors.mobile = 'Invalid mobile number';
+  }
+
+  // Validate management status
+  if (member.isManaged && !member.managerId?.trim()) {
+    errors.managerId = 'Manager ID is required for managed members';
   }
 
   // Validate spouse (if any field is filled)

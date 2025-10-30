@@ -57,6 +57,15 @@ const AddEditMember = ({ route, navigation }) => {
   const handleSubmit = async (memberData) => {
     try {
       setLoading(true);
+      console.log('Starting member submission process...');
+
+      // Ensure we have a current user
+      if (!currentUser) {
+        console.log('No current user found');
+        Alert.alert('Error', 'Please log in to continue');
+        setLoading(false);
+        return;
+      }
 
       // Double-check permissions before saving
       if (member?._id) {
@@ -64,12 +73,19 @@ const AddEditMember = ({ route, navigation }) => {
         const isAdmin = currentUser?.isAdmin === true;
         const isOwnProfile = currentUser?._id === member._id;
         
+        console.log('Checking edit permissions:', { isAdmin, isOwnProfile });
+        
         if (!isAdmin && !isOwnProfile) {
           Alert.alert('Permission Denied', 'You do not have permission to edit this member.');
           setLoading(false);
           return;
         }
       } else {
+        console.log('Checking create permissions for user:', {
+          userId: currentUser._id,
+          isAdmin: currentUser.isAdmin
+        });
+        
         if (!canCreateMember(currentUser)) {
           Alert.alert('Permission Denied', 'You do not have permission to create members.');
           setLoading(false);
@@ -103,6 +119,13 @@ const AddEditMember = ({ route, navigation }) => {
         return;
       }
 
+      // Add type and status for new members
+      const enrichedMemberData = {
+        ...memberData,
+        type: 'member',
+        status: member?._id ? memberData.status : 'active'
+      };
+
       if (member?._id) {
         // Update existing member - pass currentUser for permission check
         console.log('Updating member:', {
@@ -111,31 +134,46 @@ const AddEditMember = ({ route, navigation }) => {
           isAdmin: currentUser?.isAdmin
         });
         
-        await DatabaseService.updateMember(member._id, memberData, currentUser);
-        
-        console.log('Member updated successfully');
-        
-        // Platform-specific success handling
-        if (Platform.OS === 'web') {
-          window.confirm('Member updated successfully');
-          navigation.goBack();
-        } else {
-          Alert.alert('Success', 'Member updated successfully', [
-            { text: 'OK', onPress: () => navigation.goBack() },
-          ]);
+        try {
+          await DatabaseService.updateMember(member._id, enrichedMemberData, currentUser);
+          console.log('Member updated successfully');
+          
+          // Platform-specific success handling
+          if (Platform.OS === 'web') {
+            window.confirm('Member updated successfully');
+            navigation.goBack();
+          } else {
+            Alert.alert('Success', 'Member updated successfully', [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+          }
+        } catch (error) {
+          console.error('Failed to update member:', error);
+          Alert.alert('Error', `Failed to update member: ${error.message}`);
         }
       } else {
         // Create new member
-        await DatabaseService.createMember(memberData);
+        console.log('Creating new member:', {
+          email: enrichedMemberData.email,
+          firstName: enrichedMemberData.firstName
+        });
         
-        // Platform-specific success handling
-        if (Platform.OS === 'web') {
-          window.confirm('Member created successfully');
-          navigation.goBack();
-        } else {
-          Alert.alert('Success', 'Member created successfully', [
-            { text: 'OK', onPress: () => navigation.goBack() },
-          ]);
+        try {
+          const result = await DatabaseService.createMember(enrichedMemberData);
+          console.log('Member created successfully:', result);
+          
+          // Platform-specific success handling
+          if (Platform.OS === 'web') {
+            window.confirm('Member created successfully');
+            navigation.goBack();
+          } else {
+            Alert.alert('Success', 'Member created successfully', [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+          }
+        } catch (error) {
+          console.error('Failed to create member:', error);
+          Alert.alert('Error', `Failed to create member: ${error.message}`);
         }
       }
     } catch (error) {

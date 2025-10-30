@@ -27,8 +27,9 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
   const [verificationCode, setVerificationCode] = useState('');
   const [isVerified, setIsVerified] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [tempMemberId, setTempMemberId] = useState(null);
 
-  // Send verification code
+  // Send verification code for existing member
   const handleSendVerification = async () => {
     if (!managerIdentifier.trim()) {
       Alert.alert('Error', 'Please enter your email or mobile number');
@@ -37,43 +38,74 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
 
     try {
       setLoading(true);
-      // Generate a simple 6-digit code (in production, this should be sent via SMS/Email)
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      
-      // Store code temporarily (in production, store on backend)
-      // For now, we'll just show it in an alert
-      Alert.alert(
-        'Verification Code Sent',
-        `Your verification code is: ${code}\n\n(In production, this would be sent to your email/mobile)`,
-        [{ text: 'OK' }]
-      );
-      
-      // Store the code for verification (in production, verify against backend)
-      setVerificationSent(true);
-      // Temporary storage - in production, backend handles this
-      window.tempVerificationCode = code;
-      
+      const result = await AuthService.verifyExistingMember(managerIdentifier.trim());
+
+      if (result.success) {
+        setTempMemberId(result.memberId);
+        setVerificationSent(true);
+        const method = managerIdentifier.includes('@') ? 'email' : 'mobile';
+        Alert.alert(
+          'Verification Code Sent',
+          `A verification code has been sent to your ${method}.\n\nPlease check your ${method} and enter the code below.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send verification code');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to send verification code');
+      Alert.alert('Error', error.message || 'Failed to send verification code');
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Verify the code
-  const handleVerifyCode = () => {
+  // Verify the management code
+  const handleVerifyCode = async () => {
     if (!verificationCode.trim()) {
       Alert.alert('Error', 'Please enter the verification code');
       return;
     }
 
-    // In production, verify against backend
-    if (verificationCode === window.tempVerificationCode) {
-      setIsVerified(true);
-      Alert.alert('Success', '✅ Your account has been verified!');
-    } else {
-      Alert.alert('Error', 'Invalid verification code. Please try again.');
+    try {
+      setLoading(true);
+      const result = await AuthService.verifyManagementCode(tempMemberId, verificationCode);
+
+      if (result.success) {
+        setIsVerified(true);
+        Alert.alert('Success', '✅ Your account has been verified for management access!');
+      } else {
+        Alert.alert('Error', result.error || 'Invalid verification code. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to verify code');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resend management verification code
+  const handleResendCode = async () => {
+    try {
+      setLoading(true);
+      const result = await AuthService.resendManagementCode(tempMemberId);
+
+      if (result.success) {
+        const method = managerIdentifier.includes('@') ? 'email' : 'mobile';
+        Alert.alert(
+          'Code Resent',
+          `A new verification code has been sent to your ${method}.\n\nPlease check your ${method} and enter the new code.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to resend verification code');
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to resend verification code');
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -86,6 +118,7 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
       setVerificationCode('');
       setIsVerified(false);
       setVerificationSent(false);
+      setTempMemberId(null);
     }
   };
 
@@ -107,17 +140,17 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
     try {
       setLoading(true);
       
-      // Add registration type to member data
+      // Add registration type and manager info to member data
       const memberDataWithType = {
         ...data,
         registrationType,
         isManagedAccount: registrationType === 'managed',
+        managedBy: registrationType === 'managed' ? tempMemberId : null,
+        status: registrationType === 'managed' ? 'approved' : 'pending', // Auto-approve managed records
       };
       
       // Only pass password for separate login accounts
-      const result = registrationType === 'separate' 
-        ? await AuthService.register(memberDataWithType, password)
-        : await AuthService.register(memberDataWithType, null);
+      const result = await AuthService.register(memberDataWithType, password);
 
       if (result.success) {
         // Clear form
@@ -125,39 +158,55 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
         setConfirmPassword('');
         setLoading(false);
         
-        // Show success message and navigate to login
-        if (Platform.OS === 'web') {
-          // For web, show alert and navigate immediately after user clicks OK
-          const userConfirmed = window.confirm(
-            'Registration Successful! 🎉\n\n' +
-            'Your account has been created and is currently in pending status.\n\n' +
-            '✓ Your registration will be reviewed by an admin\n' +
-            '✓ Approval typically takes up to 24 hours\n' +
-            '✓ You will receive an email or SMS notification when your account is approved\n\n' +
-            'Once approved, you can login with your credentials.\n\n' +
-            'Click OK to go to the login page.'
-          );
-          // Navigate regardless of confirmation
-          onNavigateToLogin();
+        if (registrationType === 'managed') {
+          // For managed accounts, show success and return to manage others
+          const message = 'Member Successfully Added! 🎉\n\n' +
+            'The new member has been added to your account.\n\n' +
+            '✓ You can now manage their profile\n' +
+            '✓ Access their information from the Manage Others section\n' +
+            '✓ Make updates anytime from your dashboard';
+            
+          if (Platform.OS === 'web') {
+            window.confirm(message);
+          } else {
+            Alert.alert('Success!', message);
+          }
+          navigation.navigate('ManageOthers');
         } else {
-          // For mobile, use Alert
-          Alert.alert(
-            'Registration Successful! 🎉',
-            'Your account has been created and is currently in pending status.\n\n' +
-            '✓ Your registration will be reviewed by an admin\n' +
-            '✓ Approval typically takes up to 24 hours\n' +
-            '✓ You will receive an email or SMS notification when your account is approved\n\n' +
-            'Once approved, you can login with your credentials.',
-            [
-              { 
-                text: 'Go to Login', 
-                onPress: () => {
-                  onNavigateToLogin();
+          // For separate accounts, show pending approval message
+          if (Platform.OS === 'web') {
+            // For web, show alert and navigate immediately after user clicks OK
+            const userConfirmed = window.confirm(
+              'Registration Successful! 🎉\n\n' +
+              'Your account has been created and is currently in pending status.\n\n' +
+              '✓ Your registration will be reviewed by an admin\n' +
+              '✓ Approval typically takes up to 24 hours\n' +
+              '✓ You will receive an email or SMS notification when your account is approved\n\n' +
+              'Once approved, you can login with your credentials.\n\n' +
+              'Click OK to go to the login page.'
+            );
+            // Navigate regardless of confirmation
+            onNavigateToLogin();
+          } else {
+            // For mobile, use Alert
+            Alert.alert(
+              'Registration Successful! 🎉',
+              'Your account has been created and is currently in pending status.\n\n' +
+              '✓ Your registration will be reviewed by an admin\n' +
+              '✓ Approval typically takes up to 24 hours\n' +
+              '✓ You will receive an email or SMS notification when your account is approved\n\n' +
+              'Once approved, you can login with your credentials.',
+              [
+                { 
+                  text: 'Go to Login', 
+                  onPress: () => {
+                    onNavigateToLogin();
+                  }
                 }
-              }
-            ],
-            { cancelable: false }
-          );
+              ],
+              { cancelable: false }
+            );
+          }
         }
       } else {
         Alert.alert('Error', result.error || 'Registration failed');
@@ -289,9 +338,14 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
                       
                       <TouchableOpacity
                         style={styles.resendButton}
-                        onPress={handleSendVerification}
+                        onPress={handleResendCode}
+                        disabled={loading}
                       >
-                        <Text style={styles.resendButtonText}>Resend Code</Text>
+                        {loading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.resendButtonText}>Resend Code</Text>
+                        )}
                       </TouchableOpacity>
                     </View>
                   </>

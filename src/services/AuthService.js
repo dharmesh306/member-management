@@ -20,6 +20,11 @@ class AuthService {
   // Register new member with authentication
   async register(memberData, password) {
     try {
+      console.log('\n=== NEW MEMBER REGISTRATION ===');
+      console.log('Email:', memberData.email);
+      console.log('Mobile:', memberData.mobile);
+      console.log('Name:', memberData.firstName, memberData.lastName);
+      
       // Check if email or mobile already exists using the new duplicate check
       const duplicateCheck = await DatabaseService.checkDuplicateMember(
         memberData.email,
@@ -45,6 +50,11 @@ class AuthService {
 
       // Create member with hashed password
       const hashedPassword = this.hashPassword(password);
+      
+      // Generate verification code and token
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationToken = this.generateToken(); // Using the same token generator as password reset
+      
       const member = {
         ...memberData,
         status: 'pending', // New registrations require admin approval
@@ -54,13 +64,51 @@ class AuthService {
           resetToken: null,
           resetTokenExpiry: null,
           lastLogin: null,
+          verificationToken,
+          verificationCode,
+          verificationExpiry: new Date(Date.now() + 3600000).toISOString(), // 1 hour expiry
         },
       };
+      
+      // Log verification details in the same format as password reset
+      console.log('\n=== REGISTRATION VERIFICATION EMAIL ===');
+      console.log('To:', member.email);
+      console.log('Subject: Verify Your Registration');
+      console.log('\nDear ' + member.firstName + ',');
+      console.log('\nYour verification code is:');
+      console.log('   ' + verificationCode);
+      console.log('\nThis code will expire in 1 hour.');
+      console.log('\nVerification Link:');
+      console.log(`http://localhost:3000/verify-registration?token=${verificationToken}`);
+      console.log('═══════════════════════════════════════\n');
+
+      if (member.mobile) {
+        console.log('=== REGISTRATION VERIFICATION SMS ===');
+        console.log('To:', member.mobile);
+        console.log(`Message: Your registration verification code is: ${verificationCode}`);
+        console.log('Code expires in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      }
 
       const createdMember = await DatabaseService.createMember(member);
       
       // Remove password from response
       delete createdMember.auth.password;
+      
+      // Log registration summary
+      console.log('\n=== REGISTRATION SUMMARY ===');
+      console.log('Status: ✅ Registration Successful');
+      console.log('Member ID:', createdMember._id);
+      console.log('Name:', createdMember.firstName, createdMember.lastName);
+      console.log('Email:', createdMember.email);
+      console.log('Mobile:', createdMember.mobile || 'Not provided');
+      console.log('Status: Pending Admin Approval');
+      console.log('\n📝 Admin Instructions:');
+      console.log('1. Login as admin');
+      console.log('2. Go to Admin Management');
+      console.log('3. Find this member in pending registrations');
+      console.log('4. Use verification code to approve');
+      console.log('═══════════════════════════════════════\n');
       
       return {
         success: true,
@@ -472,6 +520,263 @@ class AuthService {
       localStorage.removeItem(this.sessionKey);
     }
     this.currentUser = null;
+  }
+
+  // Verify registration code
+  async verifyRegistrationCode(memberId, code) {
+    try {
+      const member = await DatabaseService.getMember(memberId);
+      
+      if (!member) {
+        throw new Error('Member not found');
+      }
+
+      if (!member.auth?.verificationCode) {
+        throw new Error('No verification code found');
+      }
+
+      if (member.auth.verificationCode !== code) {
+        throw new Error('Invalid verification code');
+      }
+
+      // Check if code has expired
+      const expiryDate = new Date(member.auth.verificationExpiry);
+      if (expiryDate < new Date()) {
+        throw new Error('Verification code has expired');
+      }
+
+      // Clear verification data
+      member.auth.verificationCode = null;
+      member.auth.verificationToken = null;
+      member.auth.verificationExpiry = null;
+      member.auth.verified = true;
+      member.auth.verifiedAt = new Date().toISOString();
+
+      await DatabaseService.updateMember(member._id, member);
+
+      return {
+        success: true,
+        message: 'Registration verified successfully'
+      };
+    } catch (error) {
+      console.error('Verification error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Resend verification code
+  async resendVerificationCode(memberId) {
+    try {
+      const member = await DatabaseService.getMember(memberId);
+      
+      if (!member) {
+        throw new Error('Member not found');
+      }
+
+      // Generate new verification code and token
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationToken = this.generateToken();
+      
+      // Update member with new verification data
+      member.auth.verificationCode = verificationCode;
+      member.auth.verificationToken = verificationToken;
+      member.auth.verificationExpiry = new Date(Date.now() + 3600000).toISOString(); // 1 hour expiry
+
+      await DatabaseService.updateMember(member._id, member);
+
+      // Log verification details for testing
+      console.log('\n=== RESEND VERIFICATION EMAIL ===');
+      console.log('To:', member.email);
+      console.log('Subject: Your New Verification Code');
+      console.log('\nDear ' + member.firstName + ',');
+      console.log('\nYour new verification code is:');
+      console.log('   ' + verificationCode);
+      console.log('\nThis code will expire in 1 hour.');
+      console.log('\nVerification Link:');
+      console.log(`http://localhost:3000/verify-registration?token=${verificationToken}`);
+      console.log('═══════════════════════════════════════\n');
+
+      if (member.mobile) {
+        console.log('=== RESEND VERIFICATION SMS ===');
+        console.log('To:', member.mobile);
+        console.log(`Message: Your new verification code is: ${verificationCode}`);
+        console.log('Code expires in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      }
+
+      return {
+        success: true,
+        message: 'Verification code sent successfully',
+        verificationCode, // Remove in production
+        verificationToken // Remove in production
+      };
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Verify existing member by email or mobile
+  async verifyExistingMember(identifier) {
+    try {
+      // Find member by email or mobile
+      const member = await this.findMemberByEmailOrMobile(identifier, identifier);
+      
+      if (!member) {
+        throw new Error('No account found with this email or mobile number');
+      }
+
+      // Check if member is approved
+      if (member.status !== 'approved') {
+        throw new Error('This account is not yet approved or has been denied');
+      }
+
+      // Generate verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationToken = this.generateToken();
+      
+      // Add verification data
+      member.auth = member.auth || {};
+      member.auth.managementVerificationCode = verificationCode;
+      member.auth.managementVerificationToken = verificationToken;
+      member.auth.managementVerificationExpiry = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+
+      await DatabaseService.updateMember(member._id, member);
+
+      // Send verification code
+      if (identifier.includes('@')) {
+        console.log('\n=== MANAGEMENT VERIFICATION EMAIL ===');
+        console.log('To:', identifier);
+        console.log('Subject: Verify Account Management');
+        console.log('\nDear ' + member.firstName + ',');
+        console.log('\nYour verification code is:');
+        console.log('   ' + verificationCode);
+        console.log('\nThis code will expire in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      } else {
+        console.log('\n=== MANAGEMENT VERIFICATION SMS ===');
+        console.log('To:', identifier);
+        console.log(`Message: Your account management verification code is: ${verificationCode}`);
+        console.log('Code expires in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      }
+
+      return {
+        success: true,
+        memberId: member._id,
+        message: 'Verification code sent successfully'
+      };
+    } catch (error) {
+      console.error('Verify existing member error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Verify management code for existing member
+  async verifyManagementCode(memberId, code) {
+    try {
+      const member = await DatabaseService.getMember(memberId);
+      
+      if (!member) {
+        throw new Error('Member not found');
+      }
+
+      if (!member.auth?.managementVerificationCode) {
+        throw new Error('No verification code found');
+      }
+
+      if (member.auth.managementVerificationCode !== code) {
+        throw new Error('Invalid verification code');
+      }
+
+      // Check if code has expired
+      const expiryDate = new Date(member.auth.managementVerificationExpiry);
+      if (expiryDate < new Date()) {
+        throw new Error('Verification code has expired');
+      }
+
+      // Clear verification data
+      member.auth.managementVerificationCode = null;
+      member.auth.managementVerificationToken = null;
+      member.auth.managementVerificationExpiry = null;
+      member.auth.canManageRecords = true;
+      member.auth.managementVerifiedAt = new Date().toISOString();
+
+      await DatabaseService.updateMember(member._id, member);
+
+      return {
+        success: true,
+        message: 'Account verified for management access'
+      };
+    } catch (error) {
+      console.error('Management verification error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Resend management verification code
+  async resendManagementCode(memberId) {
+    try {
+      const member = await DatabaseService.getMember(memberId);
+      
+      if (!member) {
+        throw new Error('Member not found');
+      }
+
+      // Generate new verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationToken = this.generateToken();
+      
+      // Update verification data
+      member.auth.managementVerificationCode = verificationCode;
+      member.auth.managementVerificationToken = verificationToken;
+      member.auth.managementVerificationExpiry = new Date(Date.now() + 3600000).toISOString();
+
+      await DatabaseService.updateMember(member._id, member);
+
+      // Send verification code
+      if (member.email) {
+        console.log('\n=== RESEND MANAGEMENT VERIFICATION EMAIL ===');
+        console.log('To:', member.email);
+        console.log('Subject: Your New Management Verification Code');
+        console.log('\nDear ' + member.firstName + ',');
+        console.log('\nYour new verification code is:');
+        console.log('   ' + verificationCode);
+        console.log('\nThis code will expire in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      }
+
+      if (member.mobile) {
+        console.log('\n=== RESEND MANAGEMENT VERIFICATION SMS ===');
+        console.log('To:', member.mobile);
+        console.log(`Message: Your new management verification code is: ${verificationCode}`);
+        console.log('Code expires in 1 hour.');
+        console.log('═══════════════════════════════════════\n');
+      }
+
+      return {
+        success: true,
+        message: 'New verification code sent successfully'
+      };
+    } catch (error) {
+      console.error('Resend management code error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   // Change password

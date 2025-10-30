@@ -36,9 +36,15 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
   const [member, setMember] = useState(() => {
     const defaultMember = {
       firstName: '',
-      lastName: '',
+      lastName: '', 
       email: '',
       mobile: '',
+      isManaged: false,
+      managerId: '',
+      managerName: '',
+      searchTerm: '',
+      searchResults: [],
+      managedMembers: [],
       spouse: {
         firstName: '',
         lastName: '',
@@ -236,6 +242,55 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
     }
   }, [initialData]);
 
+  // Handle manager search
+  const handleManagerSearch = async (searchTerm) => {
+    setMember(prev => ({
+      ...prev,
+      searchTerm
+    }));
+
+    if (!searchTerm || searchTerm.length < 2) {
+      setMember(prev => ({
+        ...prev,
+        searchResults: []
+      }));
+      return;
+    }
+
+    try {
+      // Search members that could be managers
+      const results = await DatabaseService.searchMembers(searchTerm);
+      setMember(prev => ({
+        ...prev,
+        searchResults: results
+      }));
+    } catch (error) {
+      console.error('Error searching managers:', error);
+    }
+  };
+
+  // Select a manager from search results
+  const selectManager = (manager) => {
+    setMember(prev => ({
+      ...prev,
+      managerId: manager._id,
+      managerName: `${manager.firstName} ${manager.lastName}`,
+      searchTerm: '',
+      searchResults: []
+    }));
+  };
+
+  // Clear selected manager
+  const clearSelectedManager = () => {
+    setMember(prev => ({
+      ...prev,
+      managerId: '',
+      managerName: '',
+      searchTerm: '',
+      searchResults: []
+    }));
+  };
+
   const handleInputChange = (field, value) => {
     setMember(prev => ({
       ...prev,
@@ -251,6 +306,11 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
         }
         return newErrors;
       });
+    }
+
+    // If changing managerId, look up the manager
+    if (field === 'managerId') {
+      lookupManager(value);
     }
 
     // Debounced duplicate check for email
@@ -389,13 +449,36 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const validation = validateMember(member);
     
     if (!validation.isValid) {
       setErrors(validation.errors);
       Alert.alert('Validation Error', 'Please fix the errors in the form');
       return;
+    }
+
+    // If this is a managed member, verify the manager exists
+    if (member.isManaged && member.managerId) {
+      try {
+        const manager = await DatabaseService.getMember(member.managerId);
+        if (!manager) {
+          setErrors(prev => ({
+            ...prev,
+            managerId: 'Invalid manager ID'
+          }));
+          Alert.alert('Invalid Manager', 'Please provide a valid manager ID');
+          return;
+        }
+      } catch (error) {
+        console.error('Error verifying manager:', error);
+        setErrors(prev => ({
+          ...prev,
+          managerId: 'Error verifying manager'
+        }));
+        Alert.alert('Error', 'Failed to verify manager. Please try again.');
+        return;
+      }
     }
 
     console.log('MemberForm submitting data:', {
@@ -405,7 +488,9 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
       email: member.email,
       firstName: member.firstName,
       hasSpouse: !!member.spouse?.firstName,
-      childrenCount: member.children?.length || 0
+      childrenCount: member.children?.length || 0,
+      isManaged: member.isManaged,
+      managerId: member.managerId
     });
 
     onSubmit(member);
@@ -589,6 +674,73 @@ const MemberForm = ({ initialData, onSubmit, onCancel, renderExtraFields }) => {
             </View>
           </>
         )}
+      </View>
+
+      {/* Managed Member Information */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Management Status</Text>
+        
+        <View style={styles.managedSection}>
+          <View style={styles.checkboxContainer}>
+            <TouchableOpacity
+              style={[styles.checkbox, member.isManaged && styles.checkboxChecked]}
+              onPress={() => handleInputChange('isManaged', !member.isManaged)}
+            >
+              {member.isManaged && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <Text style={styles.checkboxLabel}>This is a managed member</Text>
+          </View>
+
+          {member.isManaged && (
+            <View style={styles.managerInfo}>
+              <Text style={styles.label}>Manager Selection</Text>
+              <View style={styles.managerSearchContainer}>
+                <TextInput
+                  style={[styles.input, styles.managerSearchInput, errors.managerId && styles.inputError]}
+                  value={member.searchTerm}
+                  onChangeText={(value) => handleManagerSearch(value)}
+                  placeholder="Search for manager by name or email"
+                  placeholderTextColor="#999"
+                />
+                {member.searchResults && member.searchResults.length > 0 && (
+                  <View style={styles.searchResultsContainer}>
+                    {member.searchResults.map(manager => (
+                      <TouchableOpacity
+                        key={manager._id}
+                        style={styles.searchResultItem}
+                        onPress={() => selectManager(manager)}
+                      >
+                        <Text style={styles.searchResultText}>
+                          {manager.firstName} {manager.lastName}
+                        </Text>
+                        <Text style={styles.searchResultEmail}>{manager.email}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {member.managerId && (
+                <View style={styles.selectedManagerContainer}>
+                  <Text style={styles.label}>Selected Manager</Text>
+                  <View style={styles.selectedManager}>
+                    <View style={styles.selectedManagerInfo}>
+                      <Text style={styles.selectedManagerName}>{member.managerName}</Text>
+                      <Text style={styles.selectedManagerId}>ID: {member.managerId}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.removeManagerButton}
+                      onPress={() => clearSelectedManager()}
+                    >
+                      <Text style={styles.removeManagerText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              {errors.managerId && <Text style={styles.errorText}>{errors.managerId}</Text>}
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Address Information */}
@@ -907,6 +1059,119 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
     padding: 16,
+  },
+  managedSection: {
+    marginTop: 8,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#3498db',
+    borderRadius: 4,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#3498db',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: '#333',
+  },
+  managerInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  managerSearchContainer: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  managerSearchInput: {
+    marginBottom: 0,
+  },
+  searchResultsContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    maxHeight: 200,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
+  },
+  searchResultItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  searchResultText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600',
+  },
+  searchResultEmail: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  selectedManagerContainer: {
+    marginTop: 16,
+  },
+  selectedManager: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 6,
+  },
+  selectedManagerInfo: {
+    flex: 1,
+  },
+  selectedManagerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  selectedManagerId: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  removeManagerButton: {
+    padding: 8,
+  },
+  removeManagerText: {
+    fontSize: 18,
+    color: '#666',
   },
   section: {
     backgroundColor: '#fff',

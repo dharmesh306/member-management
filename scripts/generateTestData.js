@@ -6,9 +6,12 @@
 const PouchDB = require('pouchdb');
 const crypto = require('crypto-js');
 
+// Import dotenv for environment variables
+require('dotenv').config();
+
 // Import configuration
 const config = {
-  remoteDB: 'http://admin:password@astworkbench03:5984/member_management',
+  remoteDB: 'http://admin:password@localhost:5984/member_management',
 };
 
 // Initialize database
@@ -134,6 +137,9 @@ const generateMember = (index) => {
   const address = generateAddress();
   const timestamp = Date.now() + index;
 
+  const password = 'Test123!'; // Default password for all test users
+  const passwordHash = crypto.SHA256(password).toString();
+
   const member = {
     _id: `member_${timestamp}`,
     type: 'member',
@@ -142,6 +148,15 @@ const generateMember = (index) => {
     email: generateEmail(memberFirstName, memberLastName),
     mobile: generatePhone(),
     address,
+    auth: {
+      password: passwordHash,
+      createdAt: new Date().toISOString(),
+      resetToken: null,
+      resetTokenExpiry: null,
+      lastLogin: null,
+    },
+    status: 'approved', // Set status to approved
+    managedBy: null, // Will be set later for some members
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -179,6 +194,8 @@ const generateUserAccount = (member, index) => {
     lastName: member.lastName,
     passwordHash,
     isMember: true,
+    isAdmin: index === 0, // Make the first user an admin
+    role: index === 0 ? 'admin' : 'user', // Set role for the first user
     createdAt: new Date().toISOString(),
   };
 };
@@ -194,6 +211,14 @@ async function generateTestData() {
 
     for (let i = 0; i < 100; i++) {
       const member = generateMember(i);
+
+      // For every fifth member (except the first 20), assign them to be managed by one of the first 20 members
+      if (i >= 20 && i % 5 === 0) {
+        const managerId = members[Math.floor(Math.random() * 20)]._id; // Random manager from first 20 members
+        member.managedBy = managerId;
+        member.managedSince = new Date().toISOString();
+      }
+
       members.push(member);
 
       // Create user accounts for first 20 members (20% have accounts)
@@ -228,6 +253,7 @@ async function generateTestData() {
     console.log(`Members with Children: ${withChildren} (${Math.round(withChildren/members.length*100)}%)`);
     console.log(`Total Children:       ${totalChildren}`);
     console.log(`User Accounts:        ${users.length}`);
+    console.log(`Managed Members:      ${members.filter(m => m.managedBy).length}`);
     console.log('─────────────────────────────────────');
 
     console.log('\n🔐 Test User Credentials:');
