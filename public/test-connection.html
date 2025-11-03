@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CouchDB Connection Test</title>
+</head>
+<body>
+    <h1>CouchDB Connection Test</h1>
+    <div id="status">Testing...</div>
+    <pre id="output"></pre>
+
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.find.min.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        
+        function log(message, data) {
+            console.log(message, data);
+            output.textContent += message + '\n';
+            if (data) {
+                output.textContent += JSON.stringify(data, null, 2) + '\n\n';
+            }
+        }
+
+        async function testConnection() {
+            try {
+                // Test 1: Direct connection with credentials
+                log('Test 1: Connecting to 10.24.2.131...');
+                const db = new PouchDB('http://admin:password@10.24.2.131:5984/member_management', {
+                    skip_setup: false,
+                    ajax: {
+                        timeout: 10000,
+                        cache: false,
+                    }
+                });
+
+                log('Getting database info...');
+                const info = await db.info();
+                log('✅ Connection successful!', info);
+
+                // Test 2: Try a query
+                log('Test 2: Querying members...');
+                const result = await db.find({
+                    selector: { type: 'member' },
+                    limit: 3
+                });
+                log('✅ Query successful!', {
+                    found: result.docs.length,
+                    sample: result.docs[0]
+                });
+
+                status.textContent = '✅ All tests passed!';
+                status.style.color = 'green';
+            } catch (error) {
+                log('❌ Error:', {
+                    name: error.name,
+                    message: error.message,
+                    status: error.status,
+                    reason: error.reason
+                });
+                status.textContent = '❌ Test failed - see console';
+                status.style.color = 'red';
+            }
+        }
+
+        testConnection();
+    </script>
+</body>
+</html>

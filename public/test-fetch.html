@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Fetch Test</title>
+</head>
+<body>
+    <h1>Direct Fetch Test to CouchDB</h1>
+    <button onclick="testFetch()">Test Fetch</button>
+    <button onclick="testXHR()">Test XHR</button>
+    <div id="output" style="white-space: pre-wrap; font-family: monospace; margin-top: 20px;"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(msg) {
+            console.log(msg);
+            output.textContent += msg + '\n';
+        }
+
+        async function testFetch() {
+            output.textContent = '';
+            log('Testing Fetch API...');
+            log('URL: http://10.24.2.131:5984/member_management');
+            log('');
+            
+            try {
+                const response = await fetch('http://10.24.2.131:5984/member_management', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('admin:password'),
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                
+                log('✅ Fetch successful!');
+                log('Status: ' + response.status);
+                log('Headers:');
+                for (let [key, value] of response.headers) {
+                    log(`  ${key}: ${value}`);
+                }
+                
+                const data = await response.json();
+                log('\nResponse:');
+                log(JSON.stringify(data, null, 2));
+            } catch (error) {
+                log('❌ Fetch failed!');
+                log('Error: ' + error.message);
+                log('Name: ' + error.name);
+                log('\nThis usually means:');
+                log('1. CORS is not properly configured');
+                log('2. Network is blocking the request');
+                log('3. Server is not responding');
+            }
+        }
+
+        async function testXHR() {
+            output.textContent = '';
+            log('Testing XMLHttpRequest...');
+            log('URL: http://10.24.2.131:5984/member_management');
+            log('');
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', 'http://10.24.2.131:5984/member_management');
+            xhr.setRequestHeader('Authorization', 'Basic ' + btoa('admin:password'));
+            xhr.withCredentials = true;
+            
+            xhr.onload = function() {
+                log('✅ XHR successful!');
+                log('Status: ' + xhr.status);
+                log('Response: ' + xhr.responseText);
+            };
+            
+            xhr.onerror = function() {
+                log('❌ XHR failed!');
+                log('This usually means CORS is blocking the request');
+            };
+            
+            xhr.send();
+        }
+    </script>
+</body>
+</html>

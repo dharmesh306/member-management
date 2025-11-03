@@ -53,17 +53,24 @@ class DatabaseService {
   // Connect to remote CouchDB server
   async connectToRemote(remoteUrl, username, password) {
     try {
-      console.log('Connecting to remote CouchDB...');
-      const auth = username && password 
-        ? `${username}:${password}@` 
-        : '';
+      console.log('🔌 Connecting to CouchDB:', remoteUrl);
       
-      const dbUrl = remoteUrl.replace('://', `://${auth}`);
-      this.remoteDB = new PouchDB(dbUrl);
+      // Add credentials to URL for authentication
+      const auth = (username && password) ? `${username}:${password}@` : '';
+      const dbUrl = auth ? remoteUrl.replace('://', `://${auth}`) : remoteUrl;
+      
+      this.remoteDB = new PouchDB(dbUrl, {
+        skip_setup: false,
+        ajax: {
+          timeout: 30000,
+          cache: false,
+        }
+      });
 
       // Test the connection
       const info = await this.remoteDB.info();
-      console.log('Remote database info:', info);
+      console.log('✅ Connected to CouchDB!');
+      console.log('📊 Database:', info.db_name, '(' + info.doc_count + ' docs)');
 
       // Set up continuous sync with config options
       const syncOptions = {
@@ -202,7 +209,8 @@ class DatabaseService {
         hasOwnLogin: !parentMemberId, // If managed by parent, they don't have their own login
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        status: parentMemberId ? 'approved' : 'active' // Auto-approve managed members
+        // Use status from memberData if provided, otherwise set based on parent
+        status: memberData.status || (parentMemberId ? 'approved' : 'pending')
       };
 
       console.log('Attempting to save new member document...');
@@ -636,16 +644,37 @@ class DatabaseService {
         this.initDatabase();
       }
 
+      console.log('🔍 DatabaseService.getManagedMembers called');
+      console.log('   Looking for: type="member" AND managedBy="' + userId + '"');
+
+      // Query without sort to avoid index issues
       const result = await this.db.find({
         selector: {
           type: 'member',
           managedBy: userId
-        },
-        sort: [{ createdAt: 'desc' }]
+        }
       });
 
-      console.log(`Found ${result.docs.length} managed members for user ${userId}`);
-      return result.docs;
+      console.log(`   📊 Query returned ${result.docs.length} documents`);
+      
+      if (result.docs.length > 0) {
+        console.log('   👥 Documents found:');
+        result.docs.forEach(doc => {
+          console.log(`      - ${doc.firstName} ${doc.lastName} (managedBy: ${doc.managedBy})`);
+        });
+      } else {
+        console.log('   ⚠️  No documents found with managedBy: ' + userId);
+      }
+
+      // Sort manually by createdAt
+      const sortedDocs = result.docs.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return dateB - dateA; // Descending order (newest first)
+      });
+
+      console.log(`✅ Returning ${sortedDocs.length} managed members for user ${userId}`);
+      return sortedDocs;
     } catch (error) {
       console.error('Error getting managed members:', error);
       throw error;
@@ -1106,31 +1135,6 @@ class DatabaseService {
       return { ...user, _rev: response.rev };
     } catch (error) {
       console.error('Error requesting admin privileges:', error);
-      throw error;
-    }
-  }
-
-  // Get managed members for a specific user
-  async getManagedMembers(userId) {
-    try {
-      if (!this.db) {
-        await this.initDatabase();
-      }
-
-      console.log('Fetching managed members for user:', userId);
-
-      const result = await this.db.find({
-        selector: {
-          type: 'member',
-          managedBy: userId
-        },
-        sort: [{ createdAt: 'desc' }]
-      });
-
-      console.log(`Found ${result.docs.length} managed members`);
-      return result.docs;
-    } catch (error) {
-      console.error('Error getting managed members:', error);
       throw error;
     }
   }

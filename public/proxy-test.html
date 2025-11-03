@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Proxy Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #28a745; }
+        .error { background: #f8d7da; border-color: #dc3545; }
+        button { padding: 10px 20px; margin: 10px 5px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Webpack Proxy Test</h1>
+    
+    <h2>Configuration:</h2>
+    <div class="test">
+        <strong>Proxy URL:</strong> http://localhost:3001/couchdb/member_management<br>
+        <strong>Target:</strong> http://10.24.2.131:5984/member_management<br>
+        <strong>Auth:</strong> admin:password (handled by proxy)
+    </div>
+
+    <button onclick="testProxy()">Test Proxy</button>
+    <button onclick="testDirect()">Test Direct (will fail)</button>
+    
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(title, message, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'test ' + (isError ? 'error' : 'success');
+            div.innerHTML = `<strong>${title}</strong><br><pre>${message}</pre>`;
+            output.appendChild(div);
+        }
+
+        async function testProxy() {
+            output.innerHTML = '';
+            log('Testing...', 'Fetching via proxy: /couchdb/member_management');
+            
+            try {
+                const response = await fetch('/couchdb/member_management', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log('✅ Proxy Works!', 
+                    `Database: ${data.db_name}\n` +
+                    `Documents: ${data.doc_count}\n` +
+                    `Update Seq: ${data.update_seq}\n\n` +
+                    `Full Response:\n${JSON.stringify(data, null, 2)}`
+                );
+            } catch (error) {
+                log('❌ Proxy Failed', 
+                    `Error: ${error.message}\n\n` +
+                    `This means the webpack proxy is not working correctly.\n` +
+                    `Check that:\n` +
+                    `1. Webpack dev server is running\n` +
+                    `2. Proxy configuration is correct\n` +
+                    `3. CouchDB server is accessible`,
+                    true
+                );
+            }
+        }
+
+        async function testDirect() {
+            output.innerHTML = '';
+            log('Testing...', 'Fetching directly: http://10.24.2.131:5984/member_management');
+            
+            try {
+                const response = await fetch('http://10.24.2.131:5984/member_management', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('admin:password'),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                log('✅ Direct Access Works!', 
+                    `Database: ${data.db_name}\n` +
+                    `Documents: ${data.doc_count}`,
+                );
+            } catch (error) {
+                log('❌ Direct Access Failed (Expected)', 
+                    `Error: ${error.message}\n\n` +
+                    `This is expected due to CORS/browser security.\n` +
+                    `That's why we use the proxy!`,
+                    true
+                );
+            }
+        }
+    </script>
+</body>
+</html>

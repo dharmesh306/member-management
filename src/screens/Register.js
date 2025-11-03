@@ -28,6 +28,7 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
   const [isVerified, setIsVerified] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [tempMemberId, setTempMemberId] = useState(null);
+  const [managerUserId, setManagerUserId] = useState(null); // User account ID for managedBy
 
   // Send verification code for existing member
   const handleSendVerification = async () => {
@@ -42,6 +43,7 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
 
       if (result.success) {
         setTempMemberId(result.memberId);
+        setManagerUserId(result.userAccountId || result.memberId); // Use userAccountId if available, fallback to memberId
         setVerificationSent(true);
         const method = managerIdentifier.includes('@') ? 'email' : 'mobile';
         Alert.alert(
@@ -119,6 +121,7 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
       setIsVerified(false);
       setVerificationSent(false);
       setTempMemberId(null);
+      setManagerUserId(null);
     }
   };
 
@@ -145,7 +148,7 @@ const Register = ({ navigation, onRegisterSuccess, onNavigateToLogin }) => {
         ...data,
         registrationType,
         isManagedAccount: registrationType === 'managed',
-        managedBy: registrationType === 'managed' ? tempMemberId : null,
+        managedBy: registrationType === 'managed' ? managerUserId : null, // Use user account ID, not member ID
         status: registrationType === 'managed' ? 'approved' : 'pending', // Auto-approve managed records
       };
       

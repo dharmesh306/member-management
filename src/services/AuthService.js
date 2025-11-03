@@ -92,6 +92,36 @@ class AuthService {
 
       const createdMember = await DatabaseService.createMember(member);
       
+      // If this is a separate login registration, create a user account too
+      if (memberData.registrationType === 'separate' && memberData.email) {
+        console.log('\n🔐 Creating separate user account for login...');
+        const hashedPassword = this.hashPassword(password);
+        
+        const userAccount = {
+          _id: `user_${memberData.email}`,
+          type: 'user',
+          email: memberData.email,
+          mobile: memberData.mobile,
+          password: hashedPassword,
+          memberId: createdMember._id,
+          firstName: memberData.firstName,
+          lastName: memberData.lastName,
+          isAdmin: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        try {
+          const db = DatabaseService.db;
+          await db.put(userAccount);
+          console.log('✅ User account created:', userAccount._id);
+          console.log('   Email:', userAccount.email);
+          console.log('   Linked to member:', createdMember._id);
+        } catch (userError) {
+          console.error('❌ Failed to create user account:', userError);
+          // Don't fail the whole registration if user creation fails
+        }
+      }
+      
       // Remove password from response
       delete createdMember.auth.password;
       
@@ -102,7 +132,11 @@ class AuthService {
       console.log('Name:', createdMember.firstName, createdMember.lastName);
       console.log('Email:', createdMember.email);
       console.log('Mobile:', createdMember.mobile || 'Not provided');
+      console.log('Registration Type:', memberData.registrationType || 'member');
       console.log('Status: Pending Admin Approval');
+      if (memberData.registrationType === 'separate') {
+        console.log('User Account: Created for separate login');
+      }
       console.log('\n📝 Admin Instructions:');
       console.log('1. Login as admin');
       console.log('2. Go to Admin Management');
@@ -156,9 +190,13 @@ class AuthService {
             const hashedPassword = this.hashPassword(password);
             
             console.log('User found:', user.email);
-            console.log('Password match:', hashedPassword === user.passwordHash);
+            console.log('Checking password (supports both "password" and "passwordHash" fields)');
             
-            if (hashedPassword === user.passwordHash) {
+            // Support both password field names for compatibility
+            const storedPassword = user.password || user.passwordHash;
+            console.log('Password match:', hashedPassword === storedPassword);
+            
+            if (hashedPassword === storedPassword) {
               // Create session
               const session = {
                 userId: user._id,
@@ -179,12 +217,14 @@ class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 isAdmin: user.isAdmin,
+                memberId: user.memberId, // Link to member profile
                 loginType: 'user',
               };
 
               console.log('=== USER LOGIN SUCCESSFUL ===');
               console.log('User object returned:', JSON.stringify(this.currentUser, null, 2));
               console.log('isAdmin:', this.currentUser.isAdmin);
+              console.log('memberId:', this.currentUser.memberId);
               console.log('loginType:', this.currentUser.loginType);
               console.log('=============================');
 
@@ -473,6 +513,7 @@ class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 isAdmin: user.isAdmin,
+                memberId: user.memberId, // Link to member profile
                 loginType: 'user',
               };
               return this.currentUser;
@@ -667,9 +708,34 @@ class AuthService {
         console.log('═══════════════════════════════════════\n');
       }
 
+      // Find the user account ID if the member has a separate login
+      let userAccountId = null;
+      if (member.email) {
+        try {
+          const db = DatabaseService.db;
+          if (db) {
+            const userResult = await db.find({
+              selector: {
+                type: 'user',
+                email: member.email
+              },
+              limit: 1
+            });
+            
+            if (userResult.docs && userResult.docs.length > 0) {
+              userAccountId = userResult.docs[0]._id;
+              console.log('Found user account:', userAccountId);
+            }
+          }
+        } catch (userError) {
+          console.log('No user account found for this member');
+        }
+      }
+
       return {
         success: true,
         memberId: member._id,
+        userAccountId: userAccountId, // Include user account ID if exists
         message: 'Verification code sent successfully'
       };
     } catch (error) {

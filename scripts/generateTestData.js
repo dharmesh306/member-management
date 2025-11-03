@@ -6,9 +6,6 @@
 const PouchDB = require('pouchdb');
 const crypto = require('crypto-js');
 
-// Import dotenv for environment variables
-require('dotenv').config();
-
 // Import configuration
 const config = {
   remoteDB: 'http://admin:password@localhost:5984/member_management',

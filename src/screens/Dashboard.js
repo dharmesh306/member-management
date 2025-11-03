@@ -36,6 +36,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const [showMemberDetails, setShowMemberDetails] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showManageRecordSubmenu, setShowManageRecordSubmenu] = useState(false);
+  const [viewingFamilyMembers, setViewingFamilyMembers] = useState(false);
 
   // Show member details modal
   const handleCardPress = (member) => {
@@ -47,6 +48,42 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const closeMemberDetails = () => {
     setShowMemberDetails(false);
     setSelectedMember(null);
+  };
+
+  // Load managed members (family members)
+  const loadManagedMembers = async () => {
+    try {
+      console.log('🔍 Loading managed members');
+      console.log('📧 Current user email:', currentUser.email);
+      console.log('🆔 Current user _id:', currentUser._id);
+      console.log('� Login type:', currentUser.loginType);
+      
+      // Construct the user ID from email (user accounts use "user_{email}" format)
+      const userId = currentUser.loginType === 'user' 
+        ? currentUser._id 
+        : `user_${currentUser.email}`;
+      
+      console.log('🎯 Looking for managed members with userId:', userId);
+      
+      const managed = await DatabaseService.getManagedMembers(userId);
+      console.log('✅ Loaded managed members:', managed.length);
+      if (managed.length > 0) {
+        console.log('👥 Family members found:');
+        managed.forEach(m => console.log(`  - ${m.firstName} ${m.lastName} (${m.email})`));
+      } else {
+        console.log('⚠️  No family members found for user ID:', userId);
+      }
+      
+      // Show family members in the main list by setting filtered members
+      setFilteredMembers(managed);
+      setSearchQuery(''); // Clear search
+      setViewingFamilyMembers(true); // Hide search bar
+      setShowMenu(false);
+      setShowManageRecordSubmenu(false);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load family members');
+      console.error('❌ Error loading managed members:', error);
+    }
   };
 
   // Initialize database and load members
@@ -70,6 +107,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
     try {
       console.log('Loading members from database...');
       setLoading(true);
+      setViewingFamilyMembers(false); // Reset family members view
       // Use the new permission-aware method
       const data = await DatabaseService.getMembersForUser(currentUser);
       console.log(`Loaded ${data.length} members from database`);
@@ -156,13 +194,14 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
     }
 
     // Check if user has permission to delete
-    if (!canDeleteMember(currentUser, member._id)) {
+    if (!canDeleteMember(currentUser, member._id, member)) {
       console.log('Delete permission denied:', {
         userId: currentUser._id,
         isAdmin: currentUser.isAdmin,
-        userRole: currentUser.role
+        userRole: currentUser.role,
+        memberManagedBy: member.managedBy
       });
-      Alert.alert('Permission Denied', 'You do not have permission to delete members. Only admins can delete records.');
+      Alert.alert('Permission Denied', 'You do not have permission to delete this member. You can only delete members you manage or if you are an admin.');
       return;
     }
 
@@ -275,8 +314,8 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   };
 
   const renderMemberCard = ({ item }) => {
-    const canEdit = canEditMember(currentUser, item._id);
-    const canDelete = canDeleteMember(currentUser, item._id);
+    const canEdit = canEditMember(currentUser, item._id, item);
+    const canDelete = canDeleteMember(currentUser, item._id, item);
     const isOwnRecord = currentUser && currentUser._id === item._id;
 
     return (
@@ -450,28 +489,51 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
                     _id: currentUser._id,
                     email: currentUser.email,
                     loginType: currentUser.loginType,
+                    memberId: currentUser.memberId,
                     membersLoaded: members.length
                   });
                   
-                  // For admin users logged in as 'user' type, they might not have a member record
-                  if (currentUser.loginType === 'user') {
+                  let myRecord = null;
+                  
+                  // For users with separate login (loginType='user'), find their linked member record
+                  if (currentUser.loginType === 'user' && currentUser.memberId) {
+                    console.log('User account - looking for linked member:', currentUser.memberId);
+                    
+                    // Try to find member record by memberId
+                    myRecord = members.find(m => m._id === currentUser.memberId);
+                    
+                    // If not found in already loaded members, fetch directly from database
+                    if (!myRecord) {
+                      try {
+                        myRecord = await DatabaseService.getMember(currentUser.memberId);
+                        console.log('Fetched linked member from database:', myRecord?._id);
+                      } catch (error) {
+                        console.error('Error fetching linked member record:', error);
+                      }
+                    }
+                  } else if (currentUser.loginType === 'member') {
+                    // For direct member login, use their _id
+                    console.log('Member account - using _id:', currentUser._id);
+                    
+                    // Try to find member record by _id
+                    myRecord = members.find(m => m._id === currentUser._id);
+                    
+                    // If not found in already loaded members, fetch directly from database
+                    if (!myRecord) {
+                      try {
+                        myRecord = await DatabaseService.getMember(currentUser._id);
+                        console.log('Fetched member from database:', myRecord?._id);
+                      } catch (error) {
+                        console.error('Error fetching member record:', error);
+                      }
+                    }
+                  } else {
+                    // Pure admin user without linked member
                     Alert.alert(
                       'Admin Account', 
-                      'You are logged in as an admin user. Admin accounts do not have member profiles. Please create a member account if you want to have a member profile.'
+                      'You are logged in as an admin user without a linked member profile. Admin accounts do not have member profiles.'
                     );
                     return;
-                  }
-                  
-                  // Try to find member record by _id first
-                  let myRecord = members.find(m => m._id === currentUser._id);
-                  
-                  // If not found in already loaded members, fetch directly from database
-                  if (!myRecord) {
-                    try {
-                      myRecord = await DatabaseService.getMember(currentUser._id);
-                    } catch (error) {
-                      console.error('Error fetching member record:', error);
-                    }
                   }
                   
                   if (myRecord) {
@@ -520,11 +582,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
                   {/* View Managed Members */}
                   <TouchableOpacity
                     style={styles.submenuItem}
-                    onPress={() => {
-                      setShowMenu(false);
-                      setShowManageRecordSubmenu(false);
-                      setSearchQuery('managedBy:' + currentUser._id);
-                    }}
+                    onPress={loadManagedMembers}
                   >
                     <Text style={styles.submenuItemIcon}>👥</Text>
                     <Text style={styles.submenuItemText}>View Family Members</Text>
@@ -572,31 +630,56 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
         </View>
       )}
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="🔍 Search members by name, email, or mobile..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          autoFocus={false}
-        />
-        {searchQuery.length > 0 && (
+      {/* Family Members View Header */}
+      {viewingFamilyMembers && (
+        <View style={styles.familyMembersHeader}>
+          <View style={styles.familyMembersHeaderContent}>
+            <Text style={styles.familyMembersTitle}>👥 Your Family Members</Text>
+            <Text style={styles.familyMembersCount}>
+              {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
           <TouchableOpacity
-            style={styles.clearButton}
-            onPress={() => setSearchQuery('')}
+            style={styles.backToAllButton}
+            onPress={async () => {
+              setViewingFamilyMembers(false);
+              await loadMembers();
+            }}
           >
-            <Text style={styles.clearButtonText}>✕</Text>
+            <Text style={styles.backToAllButtonText}>← Back to All Members</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
-      {/* Results Count - only show when searching */}
-      {searchQuery && (
-        <Text style={styles.resultsText}>
-          Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
-        </Text>
+      {/* Search Bar - Hide when viewing family members */}
+      {!viewingFamilyMembers && (
+        <>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="🔍 Search members by name, email, or mobile..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={() => setSearchQuery('')}
+              >
+                <Text style={styles.clearButtonText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Results Count - only show when searching */}
+          {searchQuery && (
+            <Text style={styles.resultsText}>
+              Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </>
       )}
 
       {/* Action Buttons */}
@@ -973,6 +1056,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontWeight: '500',
+  },
+  familyMembersHeader: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#3498db',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(52, 152, 219, 0.2)',
+      },
+      default: {
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
+  },
+  familyMembersHeaderContent: {
+    marginBottom: 12,
+  },
+  familyMembersTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 4,
+  },
+  familyMembersCount: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    fontWeight: '500',
+  },
+  backToAllButton: {
+    backgroundColor: '#3498db',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  backToAllButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   searchContainer: {
     marginHorizontal: 16,
