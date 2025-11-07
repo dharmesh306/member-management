@@ -41,10 +41,16 @@ export const canViewMember = (user, memberId) => {
 /**
  * Check if user can edit a specific member record
  * - Admins can edit all records
- * - Users can edit members they manage (managedBy field)
- * - Regular users can only edit their own profile through "Edit My Profile" menu
+ * - Users can edit their own member record (if user.memberId matches memberId)
+ * - Users can edit members they manage (managedBy field matches user._id)
  */
 export const canEditMember = (user, memberId, memberData = null) => {
+  console.log('=== CAN EDIT MEMBER CHECK ===');
+  console.log('memberData parameter:', memberData);
+  console.log('memberData type:', typeof memberData);
+  console.log('memberData is null?', memberData === null);
+  console.log('memberData is undefined?', memberData === undefined);
+  
   if (!user) {
     console.log('Edit permission denied: No user provided');
     return false;
@@ -56,6 +62,17 @@ export const canEditMember = (user, memberId, memberData = null) => {
     return true;
   }
   
+  // Users can edit their own member record
+  if (user.memberId && user.memberId === memberId) {
+    console.log('Edit permission granted: User editing their own member record', {
+      userId: user._id,
+      userMemberId: user.memberId,
+      targetMemberId: memberId
+    });
+    console.log('============================');
+    return true;
+  }
+  
   // Users can edit members they manage
   if (memberData && memberData.managedBy) {
     const isManagedByUser = memberData.managedBy === user._id;
@@ -63,20 +80,30 @@ export const canEditMember = (user, memberId, memberData = null) => {
       userId: user._id,
       targetMemberId: memberId,
       managedBy: memberData.managedBy,
-      isManagedByUser
+      isManagedByUser,
+      memberDataKeys: Object.keys(memberData)
     });
+    console.log('============================');
     return isManagedByUser;
   }
   
-  console.log('Edit permission denied: User is not admin and member is not managed by user');
+  console.log('Edit permission denied: User is not admin, not own record, and member is not managed by user', {
+    userId: user._id,
+    userMemberId: user.memberId,
+    targetMemberId: memberId,
+    memberData: memberData ? 'provided' : 'null',
+    hasManagedBy: memberData?.managedBy ? 'yes' : 'no',
+    managedByValue: memberData?.managedBy
+  });
+  console.log('============================');
   return false;
 };
 
 /**
  * Check if user can delete a specific member record
  * - Admins can delete all records
- * - Users can delete members they manage (managedBy field)
- * - Regular users cannot delete their own records
+ * - Users can delete members they manage (managedBy field matches user._id)
+ * - Users CANNOT delete their own member record (for safety)
  */
 export const canDeleteMember = (user, memberId, memberData = null) => {
   if (!user) {
@@ -102,6 +129,16 @@ export const canDeleteMember = (user, memberId, memberData = null) => {
     return true;
   }
 
+  // Users CANNOT delete their own member record
+  if (user.memberId && user.memberId === memberId) {
+    console.log('Delete permission denied: Users cannot delete their own member record', {
+      userId: user._id,
+      userMemberId: user.memberId,
+      targetMemberId: memberId
+    });
+    return false;
+  }
+
   // Users can delete members they manage
   if (memberData && memberData.managedBy) {
     const isManagedByUser = memberData.managedBy === user._id;
@@ -116,10 +153,6 @@ export const canDeleteMember = (user, memberId, memberData = null) => {
 
   if (!memberId) {
     console.log('Delete permission warning: No target member ID provided');
-  }
-
-  if (memberId === user._id) {
-    console.log('Delete permission warning: User attempting to delete their own record');
   }
 
   console.log('Delete permission denied: User is not admin and member is not managed by user');

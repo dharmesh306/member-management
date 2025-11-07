@@ -29,6 +29,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   const [members, setMembers] = useState([]);
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showStatistics, setShowStatistics] = useState(false);
@@ -58,10 +59,11 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
       console.log('🆔 Current user _id:', currentUser._id);
       console.log('� Login type:', currentUser.loginType);
       
-      // Construct the user ID from email (user accounts use "user_{email}" format)
-      const userId = currentUser.loginType === 'user' 
-        ? currentUser._id 
-        : `user_${currentUser.email}`;
+      // Use the current user's ID directly
+      // - For user accounts (loginType='user'): currentUser._id = "user_{email}"
+      // - For direct members (loginType='member'): currentUser._id = "member_{timestamp}"
+      // - For spouse login (loginType='spouse'): currentUser._id = "member_{timestamp}"
+      const userId = currentUser._id;
       
       console.log('🎯 Looking for managed members with userId:', userId);
       
@@ -112,12 +114,12 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
       const data = await DatabaseService.getMembersForUser(currentUser);
       console.log(`Loaded ${data.length} members from database`);
       setMembers(data);
-      // Don't set filteredMembers here - keep it empty until search
-      if (searchQuery.trim()) {
+      // Don't show all members by default - require search
+      if (searchQuery.trim() && searchQuery.trim().length >= 2) {
         // If there's a search query, filter the data
         handleSearch(searchQuery, data);
       } else {
-        // Keep filtered members empty when no search
+        // Show empty list until user searches (min 2 characters)
         setFilteredMembers([]);
       }
     } catch (error) {
@@ -129,40 +131,83 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
     }
   };
 
-  // Optimized search with debouncing effect
+  // High-performance search with debouncing and relevance scoring
   useEffect(() => {
+    if (searchQuery.trim()) {
+      setSearching(true);
+    }
+    
     const timeoutId = setTimeout(() => {
       handleSearch(searchQuery, members);
-    }, 300);
+      setSearching(false);
+    }, 200); // Reduced from 300ms to 200ms for better interactivity
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      setSearching(false);
+    };
   }, [searchQuery, members]);
 
   const handleSearch = useCallback((query, memberList = members) => {
-    if (!query.trim()) {
-      // If no search query, show empty list
+    if (!query.trim() || query.trim().length < 2) {
+      // Require at least 2 characters for search
       setFilteredMembers([]);
       return;
     }
 
-    const lowercaseQuery = query.toLowerCase();
-    const filtered = memberList.filter(member => {
-      const firstName = member.firstName?.toLowerCase() || '';
-      const lastName = member.lastName?.toLowerCase() || '';
-      const email = member.email?.toLowerCase() || '';
-      const mobile = member.mobile?.toLowerCase() || '';
-      const fullName = `${firstName} ${lastName}`;
-      
-      return (
-        firstName.includes(lowercaseQuery) ||
-        lastName.includes(lowercaseQuery) ||
-        fullName.includes(lowercaseQuery) ||
-        email.includes(lowercaseQuery) ||
-        mobile.includes(lowercaseQuery)
-      );
-    });
+    const lowercaseQuery = query.toLowerCase().trim();
+    const queryWords = lowercaseQuery.split(/\s+/); // Split for multi-word search
+    
+    // Filter and score results for relevance
+    const scoredResults = memberList
+      .map(member => {
+        const firstName = member.firstName?.toLowerCase() || '';
+        const lastName = member.lastName?.toLowerCase() || '';
+        const email = member.email?.toLowerCase() || '';
+        const mobile = member.mobile?.toLowerCase() || '';
+        const fullName = `${firstName} ${lastName}`;
+        
+        let score = 0;
+        let matches = false;
+        
+        // Check if all query words match
+        const allWordsMatch = queryWords.every(word => 
+          firstName.includes(word) ||
+          lastName.includes(word) ||
+          email.includes(word) ||
+          mobile.includes(word)
+        );
+        
+        if (!allWordsMatch) return null;
+        
+        // Scoring system for relevance (higher score = better match)
+        // Exact matches get highest priority
+        if (firstName === lowercaseQuery || lastName === lowercaseQuery) {
+          score += 100;
+        }
+        if (fullName === lowercaseQuery) {
+          score += 150;
+        }
+        
+        // Starts with gets high priority
+        if (firstName.startsWith(lowercaseQuery) || lastName.startsWith(lowercaseQuery)) {
+          score += 50;
+        }
+        
+        // Contains gets medium priority
+        if (firstName.includes(lowercaseQuery)) score += 20;
+        if (lastName.includes(lowercaseQuery)) score += 20;
+        if (fullName.includes(lowercaseQuery)) score += 30;
+        if (email.includes(lowercaseQuery)) score += 15;
+        if (mobile.includes(lowercaseQuery)) score += 10;
+        
+        return { member, score };
+      })
+      .filter(result => result !== null) // Remove non-matches
+      .sort((a, b) => b.score - a.score) // Sort by relevance (highest first)
+      .map(result => result.member); // Extract members only
 
-    setFilteredMembers(filtered);
+    setFilteredMembers(scoredResults);
   }, [members]);
 
   const handleRefresh = async () => {
@@ -314,6 +359,15 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
   };
 
   const renderMemberCard = ({ item }) => {
+    // Debug: Log member data for permission checks
+    console.log('=== RENDER MEMBER CARD DEBUG ===');
+    console.log('Full item object:', JSON.stringify(item, null, 2));
+    console.log('Item keys:', Object.keys(item));
+    console.log('managedBy field exists?', 'managedBy' in item);
+    console.log('managedBy value:', item.managedBy);
+    console.log('Current user ID:', currentUser._id);
+    console.log('================================');
+    
     const canEdit = canEditMember(currentUser, item._id, item);
     const canDelete = canDeleteMember(currentUser, item._id, item);
     const isOwnRecord = currentUser && currentUser._id === item._id;
@@ -399,7 +453,7 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
 
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
-      {searchQuery ? (
+      {searchQuery && searchQuery.trim().length >= 2 ? (
         <>
           <Text style={styles.emptyIcon}>🔍</Text>
           <Text style={styles.emptyText}>
@@ -409,14 +463,24 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
             Try different keywords or clear your search
           </Text>
         </>
-      ) : (
+      ) : searchQuery && searchQuery.trim().length < 2 ? (
         <>
-          <Text style={styles.emptyIcon}>👥</Text>
+          <Text style={styles.emptyIcon}>⌨️</Text>
           <Text style={styles.emptyText}>
-            Start typing to search members
+            Keep typing...
           </Text>
           <Text style={styles.emptySubtext}>
-            Search by name, email, or mobile number
+            Enter at least 2 characters to search
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.emptyIcon}>🔍</Text>
+          <Text style={styles.emptyText}>
+            Start searching for members
+          </Text>
+          <Text style={styles.emptySubtext}>
+            Type at least 2 characters in the search box above
           </Text>
         </>
       )}
@@ -657,13 +721,18 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="🔍 Search members by name, email, or mobile..."
+              placeholder="🔍 Search members (min 2 chars) - name, email, mobile..."
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus={false}
             />
-            {searchQuery.length > 0 && (
+            {searching && (
+              <View style={styles.searchingIndicator}>
+                <ActivityIndicator size="small" color="#3498db" />
+              </View>
+            )}
+            {searchQuery.length > 0 && !searching && (
               <TouchableOpacity
                 style={styles.clearButton}
                 onPress={() => setSearchQuery('')}
@@ -674,9 +743,10 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
           </View>
 
           {/* Results Count - only show when searching */}
-          {searchQuery && (
+          {searchQuery && !searching && (
             <Text style={styles.resultsText}>
-              Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
+              Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} 
+              {filteredMembers.length > 0 && ' (sorted by relevance)'}
             </Text>
           )}
         </>
@@ -700,10 +770,16 @@ const Dashboard = ({ onAddMember, onEditMember, onLogout, onAdminManagement, cur
         ListEmptyComponent={renderEmptyList}
         onRefresh={handleRefresh}
         refreshing={refreshing}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={15}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({
+          length: 120, // Approximate height of a member card
+          offset: 120 * index,
+          index,
+        })}
       />
 
       {/* Member Details Modal */}
@@ -1132,6 +1208,15 @@ const styles = StyleSheet.create({
   clearButtonText: {
     fontSize: 18,
     color: '#999',
+  },
+  searchingIndicator: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   resultsText: {
     marginHorizontal: 16,

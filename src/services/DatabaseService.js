@@ -610,27 +610,10 @@ class DatabaseService {
         return [];
       }
 
-      // For admins, return all members
-      if (currentUser.isAdmin) {
-        console.log('Admin user - returning all members');
-        return await this.getAllMembers();
-      }
-
-      // For regular users, get:
-      // 1. All members they manage
-      // 2. Their own record
-      const result = await this.db.find({
-        selector: {
-          type: 'member',
-          $or: [
-            { _id: currentUser._id },
-            { managedBy: currentUser._id }
-          ]
-        }
-      });
-
-      console.log(`Regular user - returning ${result.docs.length} members (self + managed members)`);
-      return result.docs;
+      // All logged-in users can view the full member directory
+      // Authorization for edit/delete is handled separately in authorization.js
+      console.log(`User ${currentUser._id} - returning all members for directory viewing`);
+      return await this.getAllMembers();
     } catch (error) {
       console.error('Error getting members for user:', error);
       throw error;
